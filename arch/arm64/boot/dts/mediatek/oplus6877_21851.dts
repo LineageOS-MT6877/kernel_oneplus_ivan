@@ -1115,8 +1115,58 @@ gpio_goodix_cs_func: gpio_goodix_cs_func {
 	};
 //endif
 };
+<<<<<<< HEAD
 #include "oplus6877_21851/cust.dtsi"
 #include "mediatek/cust_mt6877_touch_1080x2300.dtsi"
+=======
+/*
+&pio {
+	fsa_hs_det: fsa_hs_det {
+		pins_cmd_dat {
+			pinmux = <PINMUX_GPIO169__FUNC_GPIO169>;
+			slew-rate = <1>;
+			output-high;
+		};
+	};
+};
+
+&i2c6 {
+	fsa4480: fsa4480@42 {
+		compatible = "qcom,fsa4480-i2c";
+		reg = <0x42>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&fsa_hs_det>;
+		fsa4480,hs-det-gpio = <&pio 169 0>;
+		fsa4480,reset-gpio = <&pio 111 0>;
+
+	};
+};
+*/
+//#endif
+
+//Add for enable sdcard
+&msdc1 {
+	cd_level = /bits/ 8 <MSDC_CD_HIGH>;
+	status = "okay";
+	vmmc-supply = <&mt_pmic_vmch_ldo_reg>;
+};
+
+&mt6360_ldo {
+	sdcard_det_en = <1>;
+	sdcard_hlact = <0>;
+};
+
+&bt {
+       flavor_bin = "c";
+};
+
+&wifi {
+       flavor_bin = "c";
+};
+
+
+#include "mediatek/oplus6877/21851/cust.dtsi"
+>>>>>>> a524e278d27f... ARM64: dts: mediatek: Generate cust.dtsi for 21851 project
 #include "mediatek/chopin/cust_mt6877_chopin_charge.dtsi"
 #include "mediatek/cust_mt6877_camera_21851.dtsi"
 /*End of this file, DO NOT ADD ANYTHING HERE*/
