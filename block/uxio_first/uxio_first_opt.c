@@ -201,7 +201,7 @@ void blk_uxio_set_read_opt(bool enable)
 	printk(KERN_ERR "blk_uxio_set_read_opt: (%s)\n", enable? "true" : "false");
 }
 
-bool blk_uxio_get_read_opt()
+bool blk_uxio_get_read_opt(void)
 {
 	return uxio_read_opt;
 }
