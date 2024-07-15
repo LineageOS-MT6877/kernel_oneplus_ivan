@@ -13,7 +13,6 @@
 #include <linux/seq_file.h>
 #include <asm/uaccess.h>
 #include <../../mm/internal.h>
-#include  <linux/healthinfo/memory_monitor.h>
 
 #ifdef CONFIG_OPLUS_HEALTHINFO
 struct alloc_wait_para allocwait_para = {
