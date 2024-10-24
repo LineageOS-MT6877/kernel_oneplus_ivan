@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
-* Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2019 MediaTek Inc.
+ */
 
 #ifndef __MTK_QOS_IPI_H__
 #define __MTK_QOS_IPI_H__
@@ -23,6 +23,7 @@ enum {
 	QOS_IPI_SMI_MET_MON,
 	QOS_IPI_SETUP_GPU_INFO,
 	QOS_IPI_SWPM_SET_UPDATE_CNT,
+	QOS_IPI_QOS_SHARE_INIT,
 
 	NR_QOS_IPI,
 };
@@ -72,25 +73,32 @@ struct qos_ipi_data {
 			unsigned int enable;
 		} qos_bound_stress_enable;
 		struct {
-			unsigned int ena;
-			unsigned int enc[4];
+			uint16_t ena;
+			uint16_t enc[4];
 		} smi_met_mon;
 		struct {
 			unsigned int addr;
 			unsigned int addr_hi;
 			unsigned int size;
 		} gpu_info;
+		struct {
+			unsigned int dram_addr;
+			unsigned int dram_size;
+		} qos_share_init;
+		struct {
+			unsigned int arg[5];
+		} max;
 	} u;
 };
 
 #ifdef CONFIG_MTK_QOS_FRAMEWORK
 extern void qos_ipi_init(void);
+extern void qos_ipi_recv_init(void);
 extern int qos_ipi_to_sspm_command(void *buffer, int slot);
-__weak void qos_ipi_recv_init(void) { }
 #else
 __weak void qos_ipi_init(void) { }
-__weak int qos_ipi_to_sspm_comman(void *buffer, int slot) { return 0; }
 __weak void qos_ipi_recv_init(void) { }
+__weak int qos_ipi_to_sspm_comman(void *buffer, int slot) { return 0; }
 #endif
 #endif
 

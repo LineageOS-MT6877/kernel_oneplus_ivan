@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: GPL-2.0 */
 #
 # Copyright (C) 2018 MediaTek Inc.
 #
@@ -11,4 +10,5 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See http://www.gnu.org/licenses/gpl-2.0.html for more details.
 #
-SSPM_VER := v1
+SSPM_VER := v2
+QOS_SHARE_SUPPORT=y
