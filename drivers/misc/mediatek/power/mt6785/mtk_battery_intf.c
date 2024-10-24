@@ -4,10 +4,15 @@
 */
 #include <linux/types.h>
 #include <mt-plat/v1/mtk_battery.h>
+#include <mt-plat/v1/mtk_charger.h>
 #include <mt-plat/mtk_boot.h>
 #include <mtk_gauge_class.h>
 #include <mtk_battery_internal.h>
 
+int __attribute__((weak)) charger_get_vbus(void)
+{
+	return 4500;
+}
 
 #if (CONFIG_MTK_GAUGE_VERSION != 30)
 signed int battery_get_bat_voltage(void)
@@ -32,19 +37,13 @@ signed int battery_get_soc(void)
 
 signed int battery_get_uisoc(void)
 {
-	struct mtk_battery *gm = get_mtk_battery();
+	int boot_mode = 0; //phase out api: get_boot_mode();
 
-	if (gm != NULL) {
-		int boot_mode = gm->boot_mode;
-
-		if ((boot_mode == META_BOOT) ||
-			(boot_mode == ADVMETA_BOOT) ||
-			(boot_mode == FACTORY_BOOT) ||
-			(boot_mode == ATE_FACTORY_BOOT))
-			return 75;
-		else if (boot_mode == 0)
-			return gm->ui_soc;
-	}
+	if ((boot_mode == META_BOOT) ||
+		(boot_mode == ADVMETA_BOOT) ||
+		(boot_mode == FACTORY_BOOT) ||
+		(boot_mode == ATE_FACTORY_BOOT))
+		return 75;
 
 	return 50;
 }
@@ -93,28 +92,29 @@ signed int battery_get_bat_current_mA(void)
 
 signed int battery_get_soc(void)
 {
-	if (get_mtk_battery() != NULL)
-		return get_mtk_battery()->soc;
+	struct mtk_battery *gm = get_mtk_battery();
+
+	if (gm != NULL)
+		return gm->soc;
 	else
 		return 50;
 }
 
 signed int battery_get_uisoc(void)
 {
+	int boot_mode = 0; //phase out api: get_boot_mode();
 	struct mtk_battery *gm = get_mtk_battery();
-	if (gm != NULL) {
-		int boot_mode = gm->boot_mode;
 
-		if ((boot_mode == META_BOOT) ||
-			(boot_mode == ADVMETA_BOOT) ||
-			(boot_mode == FACTORY_BOOT) ||
-			(boot_mode == ATE_FACTORY_BOOT))
-			return 75;
-		else if (boot_mode == 0)
-			return gm->ui_soc;
-	}
+	if ((boot_mode == META_BOOT) ||
+		(boot_mode == ADVMETA_BOOT) ||
+		(boot_mode == FACTORY_BOOT) ||
+		(boot_mode == ATE_FACTORY_BOOT))
+		return 75;
 
-	return 50;
+	if (gm != NULL)
+		return gm->ui_soc;
+	else
+		return 50;
 }
 
 signed int battery_get_bat_temperature(void)
@@ -133,7 +133,7 @@ signed int battery_get_ibus(void)
 
 signed int battery_get_vbus(void)
 {
-	return pmic_get_vbus();
+	return charger_get_vbus();
 }
 
 signed int battery_get_bat_avg_current(void)
