@@ -28,81 +28,88 @@ ccflags-y += \
 	-I$(srctree)/include/linux/	\
 	-I$(srctree)/drivers/misc/mediatek/dramc/$(MTK_PLATFORM)	\
 	-I$(EEM_ROOT_DIR)/$(CONFIG_MTK_PLATFORM)/inc	\
-	-I$(srctree)/drivers/misc/mediatek/base/power/mcdi/include/	\
-	-I$(srctree)/drivers/gpu/mediatek/gpufreq/ \
-	-I$(srctree)/drivers/gpu/mediatek/gpufreq/v1/include
+	-I$(srctree)/drivers/misc/mediatek/base/power/mcdi/include/      \
+	-I$(srctree)/drivers/misc/mediatek/thermal/mt6853/inc/mach  	  \
+	-I$(srctree)/drivers/misc/mediatek/base/power/include/gpufreq_v1/  \
+	-I$(srctree)/drivers/gpu/mediatek/gpufreq/   \
+	-I$(srctree)/drivers/gpu/mediatek/ged/include/
+
+ifeq ($(CONFIG_MTK_TINYSYS_MCUPM_SUPPORT), y)
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/mcupm/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/mcupm/$(MTK_PLATFORM)/
+endif
 
 ifeq ($(findstring _aging,$(PROJECT_DTB_NAMES)),_aging)
 subdir-ccflags-y += -DAGING_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6885v1_64_alpha_mcl50)
-subdir-ccflags-y += -DMT6885
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_6360_alpha_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_mcl50)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_6360_alpha_4gb_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_90hz_mcl50)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/K6853v1_64_6360_alpha_120hz_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6885v1_64_alpha_mcl50glt)
-subdir-ccflags-y += -DMT6885
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_6360_alpha_120hz_turbomcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_mcl50glt)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_turbo_2280x1080_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_90hz_mcl50glt)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_2280x1080_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6885v1_64_r21)
-subdir-ccflags-y += -DMT6885
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_r21)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853tv1_64_mcl_k419)
+subdir-ccflags-y += -DMT6853T
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6883v1_64_mcl50)
-subdir-ccflags-y += -DMT6885
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853tv1_64_120hz_mcl_k419)
+subdir-ccflags-y += -DMT6853T
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6883v1_64_mcl50glt)
-subdir-ccflags-y += -DMT6885
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_rf6190_4gb_1866_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_120hz)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_rf6190_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_120hz_vdo)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_6360_alpha_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6885v1_64_mcl50)
-subdir-ccflags-y += -DMT6885
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853v1_64_6360_alpha_90hz_4gb_mcl_k419)
+subdir-ccflags-y += -DMT6853
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6889v1_64_120hz_no_switch_mipi_clk)
-subdir-ccflags-y += -DMT6889
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6853tv1_64_mcl_k419)
+subdir-ccflags-y += -DMT6853T
 subdir-ccflags-y += -DMC50_LOAD
 endif
 

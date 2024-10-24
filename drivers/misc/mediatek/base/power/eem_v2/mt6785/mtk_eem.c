@@ -39,6 +39,7 @@
 #include <linux/math64.h>
 #include <linux/uaccess.h>
 #include <linux/unistd.h>
+#include <linux/rtc.h>
 
 #ifdef CONFIG_OF
 	#include <linux/cpu.h>
@@ -52,6 +53,9 @@
 #include <mt-plat/mtk_chip.h>
 /* #include <mt-plat/mtk_gpio.h> */
 #include "upmu_common.h"
+#ifdef CONFIG_MTK_GPU_SUPPORT
+#include "mtk_gpufreq.h"
+#endif
 #ifdef CONFIG_THERMAL
 #include "mtk_thermal.h"
 #endif
@@ -63,9 +67,6 @@
 #include "mtk_eem_internal_ap.h"
 
 #include "mtk_eem_internal.h"
-#ifdef CONFIG_MTK_GPU_SUPPORT
-#include "mtk_gpufreq.h"
-#endif
 #include <mt-plat/mtk_devinfo.h>
 #include <regulator/consumer.h>
 #include "pmic_regulator.h"
@@ -93,6 +94,8 @@ struct task_struct *threadStress;
 #endif
 
 static unsigned int ctrl_EEM_Enable = 1;
+static unsigned int big_2line;
+static unsigned int gpu_2line;
 
 /* Get time stmp to known the time period */
 static unsigned long long eem_pTime_us, eem_cTime_us, eem_diff_us;
@@ -132,8 +135,6 @@ unsigned int bcpu_final_init02_flag;
 #endif
 unsigned int cur_init02_flag;
 
-static unsigned int g_fake_efuse;
-
 DEFINE_MUTEX(record_mutex);
 #if ENABLE_LOO_B
 DEFINE_MUTEX(bcpu_mutex);
@@ -151,6 +152,7 @@ DEFINE_SPINLOCK(record_spinlock);
 #define PI_MTDES_MASK		(0xFF)
 #define PI_DVTFIXED_MASK	(0xF)
 #define WAIT_TIME	(2500000)
+#define FALL_NUM        (3)
 
 struct pi_efuse_index {
 	enum eem_det_id det_id;
@@ -184,37 +186,37 @@ struct pi_efuse_index {
 static int eem_log_en;
 static unsigned int eem_checkEfuse = 1;
 static unsigned int informEEMisReady;
-static unsigned int gpu_bin;
+static int time_val = 1;
 static struct pi_efuse_index pi_efuse_idx[] = {
 	/* Without LOO enabled */
 	{EEM_DET_CCI, 3, 0, 4, 16, 0, 16, 0, 0, {0} },
-	{EEM_DET_L, 5, 0, 4, 0, 0, 16, 0, 0, {0} },
-	{EEM_DET_B, 6, 0, 7, 16, 0, 20, 0, 0, {0} },
+	{EEM_DET_L, 8, 0, 9, 16, 0, 16, 0, 0, {0} },
+	{EEM_DET_B, 2, 0, 1,  0, 0,  0, 0, 0, {0} },
 #if ENABLE_LOO_B
 	/* With LOO enabled */
-	{EEM_DET_B_HI, 10, 0, 11, 16, 0, 0, 1, 0, {0} },
-	{EEM_DET_B, 13, 0, 12, 0, 0, 0, 1, 0, {0} },
+	{EEM_DET_B_HI,  6, 0,  7, 16, 0, 0, 1, 0, {0} },
+	{EEM_DET_B,  2, 0,  1, 0, 0, 0, 1, 0, {0} },
 #endif
 	{0},
 };
 
 /* Global variable for slow idle*/
 unsigned int ptp_data[3] = {0, 0, 0};
-unsigned int gpu_opp0_t_volt[6] = {
-	105000, 105000, 102500, 100000, 97500, 95000
-};
-unsigned int gpu_vb[3] = {95000, 91250, 87500};
-unsigned int gpu_vb_flag;
 unsigned int gpu_vb_volt;
+unsigned int gpu_vb_turn_pt;
+unsigned int gpu_opp0_t_volt[4] = {
+	87500, 87500, 83750, 80000
+};
+
 
 #ifdef CONFIG_OF
 void __iomem *eem_base;
 void __iomem *infra_base;
 static u32 eem_irq_number;
 #endif
-#define INFRA_AO_NODE "mediatek,infracfg_ao"
-#define INFRA_EEM_RST (infra_base + 0x130)
-#define INFRA_EEM_CLR (infra_base + 0x134)
+#define INFRA_AO_NODE		"mediatek,infracfg_ao"
+#define INFRA_EEM_RST		(infra_base + 0x150)
+#define INFRA_EEM_CLR		(infra_base + 0x154)
 
 /*=============================================================
  * common functions for both ap and eem
@@ -240,11 +242,26 @@ static int get_devinfo(void)
 	unsigned int tmp;
 #endif
 	struct eem_det *det;
-	unsigned int efuse_val;
 	int ret = 0, i = 0;
 	int *val;
+	int efuse_val, year, mon, real_year, real_mon;
+	int err;
+	unsigned int safeEfuse = 0;
+	struct rtc_device *rtc_dev;
+	struct rtc_time tm;
 
 	FUNC_ENTER(FUNC_LV_HELP);
+
+	memset(&tm, 0, sizeof(struct rtc_time));
+
+	rtc_dev = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
+	if (rtc_dev) {
+		err = rtc_read_time(rtc_dev, &tm);
+		if (err < 0)
+			pr_info("fail to read time\n");
+	} else
+		pr_info("[systimer] rtc_class_open rtc_dev fail\n");
+
 	val = (int *)&eem_devinfo;
 
 	/* FTPGM */
@@ -254,34 +271,42 @@ static int get_devinfo(void)
 	val[3] = get_devinfo_with_index(DEVINFO_IDX_4);
 	val[4] = get_devinfo_with_index(DEVINFO_IDX_5);
 	val[5] = get_devinfo_with_index(DEVINFO_IDX_6);
-	val[6] = get_devinfo_with_index(DEVINFO_IDX_7);
-	val[7] = get_devinfo_with_index(DEVINFO_IDX_8);
-	val[8] = get_devinfo_with_index(DEVINFO_IDX_10);
-	val[9] = get_devinfo_with_index(DEVINFO_IDX_11);
-	val[10] = get_devinfo_with_index(DEVINFO_IDX_12);
-	efuse_val = get_devinfo_with_index(GPU_VB_IDX) & 0x7;
-	if (efuse_val && efuse_val <= 3) {
-		gpu_vb_volt = gpu_vb[efuse_val - 1];
-		gpu_vb_flag = 1;
+	val[6] = get_devinfo_with_index(DEVINFO_IDX_10);
+	val[7] = get_devinfo_with_index(DEVINFO_IDX_11);
+	val[8] = get_devinfo_with_index(DEVINFO_IDX_16);
+	val[9] = get_devinfo_with_index(DEVINFO_IDX_17);
+	val[10] = get_devinfo_with_index(DEVINFO_IDX_18);
+	val[11] = get_devinfo_with_index(DEVINFO_IDX_19);
+	val[12] = get_devinfo_with_index(DEVINFO_IDX_23);
+	val[13] = get_devinfo_with_index(DEVINFO_IDX_24);
 
-	} else
-		gpu_vb_flag = 0;
+	efuse_val = get_devinfo_with_index(DEVINFO_TIME_IDX);
+	year = ((efuse_val >> 4) & 0xf) + 2018;
+	mon = efuse_val  & 0xf;
+	real_year = tm.tm_year + 1900;
+	real_mon = tm.tm_mon + 1;
 
-	if (g_fake_efuse) {
-		/* for verification */
-		val[0] = DEVINFO_0;
-		val[1] = DEVINFO_2;
-		val[2] = DEVINFO_3;
-		val[3] = DEVINFO_4;
-		val[4] = DEVINFO_5;
-		val[5] = DEVINFO_6;
-		val[6] = DEVINFO_7;
-		val[7] = DEVINFO_8;
-		val[8] = DEVINFO_10;
-		val[9] = DEVINFO_11;
-		val[10] = DEVINFO_12;
-		val[11] = DEVINFO_13;
-	}
+	if (((real_year - year == 1) && (real_mon > mon)) ||
+			(real_year - year > 1))
+		time_val = 0;
+
+#if EEM_FAKE_EFUSE
+	/* for verification */
+	val[0] = DEVINFO_0;
+	val[1] = DEVINFO_2;
+	val[2] = DEVINFO_3;
+	val[3] = DEVINFO_4;
+	val[4] = DEVINFO_5;
+	val[5] = DEVINFO_6;
+	val[6] = DEVINFO_10;
+	val[7] = DEVINFO_11;
+	val[8] = DEVINFO_16;
+	val[9] = DEVINFO_17;
+	val[10] = DEVINFO_18;
+	val[11] = DEVINFO_19;
+	val[12] = DEVINFO_23;
+	val[13] = DEVINFO_24;
+#endif
 
 	eem_debug("M_HW_RES0 = 0x%X\n", val[0]);
 	eem_debug("M_HW_RES2 = 0x%X\n", val[1]);
@@ -289,17 +314,18 @@ static int get_devinfo(void)
 	eem_debug("M_HW_RES4 = 0x%X\n", val[3]);
 	eem_debug("M_HW_RES5 = 0x%X\n", val[4]);
 	eem_debug("M_HW_RES6 = 0x%X\n", val[5]);
-	eem_debug("M_HW_RES7 = 0x%X\n", val[6]);
-	eem_debug("M_HW_RES8 = 0x%X\n", val[7]);
-	eem_debug("M_HW_RES10 = 0x%X\n", val[8]);
-	eem_debug("M_HW_RES11 = 0x%X\n", val[9]);
-	eem_debug("M_HW_RES12 = 0x%X\n", val[10]);
-	eem_debug("M_HW_RES13 = 0x%X\n", val[11]);
+	eem_debug("M_HW_RES10 = 0x%X\n", val[6]);
+	eem_debug("M_HW_RES11 = 0x%X\n", val[7]);
+	eem_debug("M_HW_RES16 = 0x%X\n", val[8]);
+	eem_debug("M_HW_RES17 = 0x%X\n", val[9]);
+	eem_debug("M_HW_RES18 = 0x%X\n", val[10]);
+	eem_debug("M_HW_RES19 = 0x%X\n", val[11]);
+	eem_debug("M_HW_RES23 = 0x%X\n", val[12]);
+	eem_debug("M_HW_RES24 = 0x%X\n", val[13]);
 
-	if (eem_devinfo.FT_PGM >= 2) {
-		eem_devinfo.PI_DVTFIX_L = DVTFIXED_VAL_L_V2;
-		eem_devinfo.PI_DVTFIX_B = DVTFIXED_VAL_B_V2;
-	}
+	/* Config default PI_DVTFIX value */
+	eem_devinfo.PI_DVTFIX_L = DVTFIXED_VAL;
+	eem_devinfo.PI_DVTFIX_B = DVTFIXED_VAL_B;
 
 #if !ENABLE_MINIHQA
 	/* Backup the original values */
@@ -390,31 +416,37 @@ static int get_devinfo(void)
 	aee_rr_rec_ptp_e11((unsigned int)val[11]);
 #endif
 #if ENABLE_LOO_B
-	eem_devinfo.BIG_2LINE = 1;
+	big_2line = 1;
 #else
-	eem_devinfo.BIG_2LINE = 0;
+	big_2line = 0;
+#endif
+#if ENABLE_LOO_G
+	gpu_2line = 1;
+#else
+	gpu_2line = 0;
 #endif
 
-	eem_devinfo.GPU_2LINE = 0;
-
-	gpu_bin = (get_devinfo_with_index(GPU_BIN_CODE_IDX) >> 9) & 0x7;
-	if (gpu_bin > 5)
-		gpu_bin = 0;
+	efuse_val = (get_devinfo_with_index(DEVINFO_IDX_14)
+		>> 30) & 0x3;
+	if (efuse_val <= 3) {
+		gpu_vb_volt =
+			gpu_opp0_t_volt[efuse_val];
+		eem_debug("gpu_vb_volt:%d, efuse_val:%d\n",
+			gpu_vb_volt, efuse_val);
+	}
 
 	/* NR_HW_RES_FOR_BANK =  10 for 5 banks efuse */
 	for (i = 1; i < NR_HW_RES_FOR_BANK - 1; i++) {
 		if (val[i] == 0) {
-			if ((i == 1) || (i == 2) || (i == 8)) {
-				eem_devinfo.BIG_2LINE = 0;
+			if ((i == 2) || (i == 6)) {
+				big_2line = 0;
 				eem_error("EEM (val[%d], set B-2line:%d\n",
-					i, eem_devinfo.BIG_2LINE);
+					i, big_2line);
 			} else {
 				ret = 1;
-				eem_checkEfuse = 0;
-				eem_error("No EFUSE available, turn off EEM\n");
+				safeEfuse = 1;
+				eem_error("No EFUSE , use safe efuse\n");
 				eem_error("EEM (val[%d] !!\n", i);
-				for_each_det(det)
-					det->disabled = 1;
 				break;
 			}
 		}
@@ -423,6 +455,27 @@ static int get_devinfo(void)
 #if (EEM_FAKE_EFUSE)
 	eem_checkEfuse = 1;
 #endif
+
+#ifdef MC50_LOAD
+	safeEfuse = 1;
+#endif
+	if (safeEfuse) {
+
+		val[0] = DEVINFO_0;
+		val[1] = DEVINFO_2;
+		val[2] = DEVINFO_3;
+		val[3] = DEVINFO_4;
+		val[4] = DEVINFO_5;
+		val[5] = DEVINFO_6;
+		val[6] = DEVINFO_10;
+		val[7] = DEVINFO_11;
+		val[8] = DEVINFO_16;
+		val[9] = DEVINFO_17;
+		val[10] = DEVINFO_18;
+		val[11] = DEVINFO_19;
+		val[12] = DEVINFO_23;
+		val[13] = DEVINFO_24;
+	}
 
 
 	FUNC_EXIT(FUNC_LV_HELP);
@@ -948,13 +1001,20 @@ void base_ops_set_phase(struct eem_det *det, enum eem_phase phase)
 		break;
 
 	case EEM_PHASE_INIT02:
+		/* check if DCVALUES is minus and set DCVOFFSETIN to zero */
+		if ((det->DCVOFFSETIN & 0x8000) || (eem_devinfo.FT_PGM == 0))
+			det->DCVOFFSETIN = 0;
+
+#if ENABLE_MINIHQA
+		det->DCVOFFSETIN = 0;
+#endif
+
 		eem_debug("EEM_SET_PHASE02\n ");
 		eem_write(EEMINTEN, 0x00005f01);
 
 		eem_write(EEM_INIT2VALS,
 			  ((det->AGEVOFFSETIN << 16) & 0xffff0000) |
-			  ((eem_devinfo.FT_PGM == 0) ? 0 :
-			   det->DCVOFFSETIN & 0xffff));
+			  (det->DCVOFFSETIN & 0xffff));
 
 		/* enable EEM INIT measurement */
 		eem_write(EEMEN, 0x00000005 | SEC_MOD_SEL);
@@ -1181,39 +1241,6 @@ static void eem_calculate_aging_margin(struct eem_det *det,
 
 }
 
-static void eem_interpolate_mid_opp(struct eem_det *ndet)
-{
-	int i;
-
-	for (i = 1; i < ndet->turn_pt; i++) {
-		switch (ndet->ctrl_id) {
-		case EEM_CTRL_L:
-			ndet->volt_tbl_pmic[i] = min(
-			(unsigned int)(interpolate(
-			ndet->freq_tbl[0],
-			ndet->freq_tbl[ndet->turn_pt],
-			ndet->volt_tbl_pmic[0],
-			ndet->volt_tbl_pmic[ndet->turn_pt],
-			ndet->freq_tbl[i])),
-			ndet->volt_tbl_orig[i] + ndet->volt_clamp);
-			break;
-		case EEM_CTRL_GPU:
-			ndet->volt_tbl_pmic[i] = min(
-			(unsigned int)(interpolate(
-			ndet->freq_tbl[0],
-			ndet->freq_tbl[ndet->turn_pt],
-			ndet->volt_tbl_pmic[0],
-			ndet->volt_tbl_pmic[ndet->turn_pt],
-			ndet->freq_tbl[i])),
-			ndet->volt_tbl_orig[i] + ndet->volt_clamp);
-
-			break;
-		default:
-			break;
-		}
-	}
-
-}
 static void eem_save_final_volt_aee(struct eem_det *ndet)
 {
 #ifdef CONFIG_EEM_AEE_RR_REC
@@ -1318,6 +1345,24 @@ static void eem_save_final_volt_aee(struct eem_det *ndet)
 #endif
 }
 
+static void eem_interpolate_mid_opp(struct eem_det *ndet)
+{
+	int i;
+
+	for (i = 1; i < gpu_vb_turn_pt; i++) {
+		ndet->volt_tbl_pmic[i] =
+		(unsigned int)(interpolate(
+		ndet->freq_tbl[0],
+		ndet->freq_tbl[gpu_vb_turn_pt],
+		ndet->volt_tbl_pmic[0],
+		ndet->volt_tbl_pmic[gpu_vb_turn_pt],
+		ndet->freq_tbl[i]));
+
+		eem_debug("ndet->volt_tbl_pmic[%d]:0x%x\n",
+			i, ndet->volt_tbl_pmic[i]);
+	}
+}
+
 static void get_volt_table_in_thread(struct eem_det *det)
 {
 #if ENABLE_LOO
@@ -1328,6 +1373,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 	unsigned int i, verr = 0;
 	int low_temp_offset = 0, rm_dvtfix_offset = 0;
 	unsigned int t_clamp = 0;
+	int extra_aging = 0;
 
 	if (det == NULL)
 		return;
@@ -1338,6 +1384,9 @@ static void get_volt_table_in_thread(struct eem_det *det)
 
 	ndet = (det->loo_role == HIGH_BANK) ?
 		id_to_eem_det(det->loo_couple) : det;
+	if (ndet == NULL)
+		return;
+
 #endif
 	eem_debug("@@! In %s\n", __func__);
 	read_volt_from_VOP(det);
@@ -1533,37 +1582,36 @@ static void get_volt_table_in_thread(struct eem_det *det)
 	if (ndet->temp <= INVERT_TEMP_VAL)
 #endif
 		ndet->isTempInv = 1;
-
 	else if ((det->isTempInv) && (ndet->temp > OVER_INV_TEM_VAL))
 		ndet->isTempInv = 0;
 
 	if (ndet->ctrl_id == EEM_CTRL_GPU) {
 		if (ndet->isTempInv) {
 			ndet->low_temp_off =
-				(ndet->temp <= INVERT_LOW_TEMP_VAL) ?
-				EXTRA_LOW_TEMP_OFF_GPU : EXTRA_TEMP_OFF_GPU;
+			(ndet->temp <= INVERT_LOW_TEMP_VAL) ?
+			EXTRA_LOW_TEMP_OFF_GPU : EXTRA_TEMP_OFF_GPU;
 			t_clamp = ndet->low_temp_off;
 		} else
 			t_clamp = 0;
 	}
 
 	if (ndet->volt_policy) {
+#if 0
+		/* For this project, check high temp is not necessary*/
 		/* for temp > 85C */
-
-		if (eem_devinfo.FT_PGM < 2) {
 #ifdef CONFIG_THERMAL
 		/* eem_debug("eem_set_eem_volt cur_temp = %d, valid = %d\n", */
 		/* det->temp, tscpu_is_temp_valid()); */
 		/* 6250 * 10uV = 62.5mv */
-			if (ndet->temp > HIGH_TEM_VAL || !tscpu_is_temp_valid())
+		if (ndet->temp > HIGH_TEM_VAL || !tscpu_is_temp_valid())
 #else
-			if (ndet->temp > HIGH_TEM_VAL)
+		if (ndet->temp > HIGH_TEM_VAL)
 #endif
-				ndet->isHighTemp = 1;
-			else if ((det->isHighTemp) &&
-				(ndet->temp <= LOWER_HIGH_TEM_VAL))
-				ndet->isHighTemp = 0;
-		}
+			ndet->isHighTemp = 1;
+		else if ((det->isHighTemp) &&
+			(ndet->temp <= LOWER_HIGH_TEM_VAL))
+			ndet->isHighTemp = 0;
+#endif
 		/* Check temperature and decide set high volt or not */
 		if (ndet->isTempInv || ndet->isHighTemp) {
 			/* Add low temp offset for each bank if temp inverse */
@@ -1607,7 +1655,8 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			rm_dvtfix_offset = 0 - ndet->DVTFIXED;
 		} else {
 #if ENABLE_LOO
-			if ((ndet->loo_role != NO_LOO_BANK) && (i < 8)) {
+			if ((ndet->loo_role != NO_LOO_BANK) &&
+				(i < det->turn_pt)) {
 				highdet = id_to_eem_det(ndet->loo_couple);
 				rm_dvtfix_offset = min(
 				((highdet->DVTFIXED * highdet->freq_tbl[i]
@@ -1624,7 +1673,8 @@ static void get_volt_table_in_thread(struct eem_det *det)
 
 		if (ndet->isAddExtra == ADD_EXTRA) {
 #if ENABLE_LOO
-			if ((ndet->loo_role != NO_LOO_BANK) && (i < 8)) {
+			if ((ndet->loo_role != NO_LOO_BANK) &&
+				(i < det->turn_pt)) {
 				highdet = id_to_eem_det(ndet->loo_couple);
 				low_temp_offset = highdet->low_temp_off;
 			} else
@@ -1632,21 +1682,22 @@ static void get_volt_table_in_thread(struct eem_det *det)
 				low_temp_offset = ndet->low_temp_off;
 		}
 
+		if (time_val && (i < FALL_NUM))
+			extra_aging = 1;
+		else
+			extra_aging = 0;
+
 		switch (ndet->ctrl_id) {
 		case EEM_CTRL_L:
-			if ((i == 0) && (ndet->turn_pt != 0))
-				ndet->volt_tbl_pmic[i] = ndet->volt_tbl_orig[i]
-				+ ndet->volt_offset + ndet->volt_aging[i];
-			else
-				ndet->volt_tbl_pmic[i] = min(
-				(unsigned int)(clamp(
-				ndet->ops->eem_2_pmic(ndet,
-				(ndet->volt_tbl[i] + ndet->volt_offset +
-				low_temp_offset + ndet->volt_aging[i]) +
-				rm_dvtfix_offset - ndet->volt_dcv),
-				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
-				ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
-				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
+			ndet->volt_tbl_pmic[i] = min(
+			(unsigned int)(clamp(
+			ndet->ops->eem_2_pmic(ndet,
+			(ndet->volt_tbl[i] + ndet->volt_offset +
+			low_temp_offset + ndet->volt_aging[i]) +
+			rm_dvtfix_offset - ndet->volt_dcv),
+			ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
+			ndet->ops->eem_2_pmic(ndet, ndet->VMAX))),
+			ndet->volt_tbl_orig[i] + ndet->volt_clamp);
 			break;
 
 		case EEM_CTRL_B:
@@ -1686,7 +1737,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
 			break;
 		case EEM_CTRL_GPU:
-			if (i == 0 && gpu_vb_flag) {
+			if ((i == 0) && (gpu_vb_turn_pt != 0))
 				ndet->volt_tbl_pmic[i] = min(
 				(unsigned int)(clamp(
 				ndet->ops->eem_2_pmic(ndet,
@@ -1694,29 +1745,20 @@ static void get_volt_table_in_thread(struct eem_det *det)
 				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
 				ndet->ops->eem_2_pmic(ndet, VMAX_VAL_GPU)) +
 				low_temp_offset),
-				ndet->volt_tbl_orig[i] + ndet->volt_clamp);
-			}
-
-			else
-				ndet->volt_tbl_pmic[i] = min(
-				(unsigned int)(clamp(
-				ndet->ops->eem_2_pmic(ndet,
-				(ndet->volt_tbl[i] + ndet->volt_offset +
-				ndet->volt_aging[i]) +
-				rm_dvtfix_offset - ndet->volt_dcv),
-				ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
-				ndet->ops->eem_2_pmic(ndet, VMAX_VAL_GPU)) +
-				low_temp_offset),
 				ndet->volt_tbl_orig[i] + ndet->volt_clamp +
 				t_clamp);
-#if 0
-			if ((i == 1) &&
-				(ndet->volt_tbl_pmic[1] >
-				ndet->volt_tbl_pmic[0])) {
-				ndet->volt_tbl_pmic[0] = ndet->volt_tbl_pmic[1];
-			}
-#endif
-
+			else
+				ndet->volt_tbl_pmic[i] = min(
+			(unsigned int)(clamp(
+			ndet->ops->eem_2_pmic(ndet,
+			(ndet->volt_tbl[i] + ndet->volt_offset +
+			ndet->volt_aging[i]) +
+			rm_dvtfix_offset - ndet->volt_dcv),
+			ndet->ops->eem_2_pmic(ndet, ndet->VMIN),
+			ndet->ops->eem_2_pmic(ndet, VMAX_VAL_GPU)) +
+			low_temp_offset - extra_aging),
+			ndet->volt_tbl_orig[i] + ndet->volt_clamp +
+			t_clamp);
 			break;
 #if ENABLE_VPU
 		case EEM_CTRL_VPU:
@@ -1742,8 +1784,10 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			i, det->volt_tbl[i], det->volt_tbl_orig[i],
 			i, det->volt_tbl_pmic[i], det->ops->pmic_2_volt
 			(det, det->volt_tbl_pmic[i]));
-
+		eem_error("low_temp_offset:%d, rm_dvtfix:%d, 'det'->id:%d\n",
+			low_temp_offset, rm_dvtfix_offset, det->ctrl_id);
 #endif
+
 #if ENABLE_LOO
 		if ((i > 0) && (ndet->volt_tbl_pmic[i] >
 			ndet->volt_tbl_pmic[i-1]) &&
@@ -1780,17 +1824,11 @@ static void get_volt_table_in_thread(struct eem_det *det)
 
 	}
 
-	if ((ndet->ctrl_id == EEM_CTRL_L) ||
-		(ndet->ctrl_id == EEM_CTRL_GPU))
+	if ((ndet->ctrl_id == EEM_CTRL_GPU) &&
+		(gpu_vb_turn_pt != 0))
 		eem_interpolate_mid_opp(ndet);
 
 	eem_save_final_volt_aee(ndet);
-#if 0
-	//angus todo, due to fake efuse is not for MP
-	//Must remove this after we got safe/real efuse
-	memcpy(ndet->volt_tbl_pmic, ndet->volt_tbl_orig,
-		sizeof(ndet->volt_tbl_orig));
-#endif
 
 #if UPDATE_TO_UPOWER
 #if ENABLE_LOO
@@ -1802,7 +1840,7 @@ static void get_volt_table_in_thread(struct eem_det *det)
 			init2chk = 0;
 		else
 			init2chk = 1;
-			eem_error("cur_flag:0x%x, b_flag:0x%x\n",
+		eem_error("cur_flag:0x%x, b_flag:0x%x\n",
 			cur_init02_flag, bcpu_final_init02_flag);
 		/* only when set_volt_to_upower == 0,
 		 * the volt will be apply to upower
@@ -1856,6 +1894,7 @@ static int eem_volt_thread_handler(void *data)
 	det = id_to_eem_det(ctrl->det_id);
 	if (det == NULL)
 		return 0;
+
 	do {
 		eem_debug("In thread handler\n");
 		wait_event_interruptible(ctrl->wq, ctrl->volt_update);
@@ -1993,15 +2032,16 @@ static int eem_init1stress_thread_handler(void *data)
 		wait_event_interruptible(wqStress, eem_init1stress_en);
 		eem_error("eem init1stress start\n");
 		testCnt = 0;
+		/* Disable GPU test due to MTCMOS can't force enable */
+		det = id_to_eem_det(EEM_DET_GPU);
+		det->features = 0;
+		final_init01_flag &= ~(BIT(EEM_DET_GPU));
 
 		/* CPU/GPU pre-process (need to fix )*/
 		mt_cpufreq_ctrl_cci_volt(VBOOT_PMIC_VAL);
 		mcdi_pause(MCDI_PAUSE_BY_EEM, true);
 		mt_ppm_ptpod_policy_activate();
 
-#ifdef CONFIG_MTK_GPU_SUPPORT
-		mt_gpufreq_disable_by_ptpod();
-#endif
 		eem_debug("vpu_disable_by_ptpod 2\n");
 #if ENABLE_VPU
 		/* vpu_disable_by_ptpod(); */
@@ -2073,9 +2113,7 @@ static int eem_init1stress_thread_handler(void *data)
 
 		/* CPU/GPU post-process */
 		eem_buck_set_mode(0);
-#ifdef CONFIG_MTK_GPU_SUPPORT
-		mt_gpufreq_enable_by_ptpod(); /* enable gpu DVFS */
-#endif
+
 #if ENABLE_VPU
 		eem_error("vpu_enable_by_ptpod 2\n");
 		/* vpu_enable_by_ptpod(); */
@@ -2173,17 +2211,9 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 		det->MTDES	= devinfo->CPU_L_MTDES;
 		det->SPEC	= devinfo->CPU_L_SPEC;
 
-		if (eem_devinfo.FT_PGM >= 2)
-			det->DVTFIXED = DVTFIXED_VAL_L_V2;
-
-		if (eem_devinfo.PI_DVTFIX_L != 0) {
-			det->features = FEA_INIT01 | FEA_INIT02 | FEA_MON;
-			det->DVTFIXED = eem_devinfo.PI_DVTFIX_L;
-			det->volt_policy = 1;
-			det->low_temp_off = (eem_devinfo.FT_PGM >= 2) ?
-			EXTRA_TEMP_OFF_L_V2 : EXTRA_TEMP_OFF_L;
-			det->VMAX += eem_devinfo.PI_DVTFIX_L;
-		}
+		det->volt_policy = 1;
+		det->low_temp_off = EXTRA_TEMP_OFF_L;
+		det->VMAX += eem_devinfo.PI_DVTFIX_L;
 
 #if ENABLE_REMOVE_AGING
 		det->volt_aging[0] = 0 - AGING_VAL_CPU_L;
@@ -2193,7 +2223,7 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 	case EEM_DET_B:
 #if ENABLE_LOO_B
 		bcpu_final_init02_flag |= BIT(det_id);
-		if (eem_devinfo.BIG_2LINE) {
+		if (big_2line) {
 			det->MDES	= devinfo->CPU_B_LO_MDES;
 			det->BDES	= devinfo->CPU_B_LO_BDES;
 			det->DCMDET	= devinfo->CPU_B_LO_DCMDET;
@@ -2205,7 +2235,7 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 
 			det->DVTFIXED = DVTFIXED_VAL_BL;
 			det->VMAX		= VMAX_VAL_B;
-			det->max_freq_khz = 1800000;
+			det->max_freq_khz = B_M_FREQ_BASE;
 			det->loo_role	= LOW_BANK;
 		} else {
 #endif
@@ -2219,23 +2249,15 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 			det->SPEC	= devinfo->CPU_B_SPEC;
 
 			det->VMAX = VMAX_VAL_B;
-			det->max_freq_khz = 2000000;
+			det->max_freq_khz = B_FREQ_BASE;
 #if ENABLE_LOO_B
 			det->loo_role = NO_LOO_BANK;
 		}
 #endif
-		if (eem_devinfo.FT_PGM >= 2)
-			det->DVTFIXED = DVTFIXED_VAL_B_V2;
+		det->volt_policy = 1;
+		det->low_temp_off = EXTRA_TEMP_OFF_B;
+		det->VMAX += eem_devinfo.PI_DVTFIX_B;
 
-		if (eem_devinfo.PI_DVTFIX_B != 0) {
-			det->features =
-				FEA_INIT01 | FEA_INIT02 | FEA_MON;
-			det->DVTFIXED = eem_devinfo.PI_DVTFIX_B;
-			det->volt_policy = 1;
-			det->low_temp_off = (eem_devinfo.FT_PGM >= 2) ?
-			EXTRA_TEMP_OFF_B_V2 : EXTRA_TEMP_OFF_B;
-			det->VMAX += eem_devinfo.PI_DVTFIX_B;
-		}
 		break;
 
 	case EEM_DET_CCI:
@@ -2248,22 +2270,15 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 		det->MTDES	= devinfo->CCI_MTDES;
 		det->SPEC       = devinfo->CCI_SPEC;
 
-		if (eem_devinfo.FT_PGM >= 2)
-			det->DVTFIXED = DVTFIXED_VAL_CCI_V2;
+		det->volt_policy = 1;
+		det->low_temp_off = EXTRA_TEMP_OFF_L;
+		det->VMAX += eem_devinfo.PI_DVTFIX_L;
 
-		if (eem_devinfo.PI_DVTFIX_L != 0) {
-			det->features = FEA_INIT01 | FEA_INIT02 | FEA_MON;
-			det->DVTFIXED = eem_devinfo.PI_DVTFIX_L;
-			det->volt_policy = 1;
-			det->low_temp_off = (eem_devinfo.FT_PGM >= 2) ?
-			EXTRA_TEMP_OFF_L_V2 : EXTRA_TEMP_OFF_L;
-			det->VMAX += eem_devinfo.PI_DVTFIX_L;
-		}
 		break;
 
 	case EEM_DET_GPU:
 #if ENABLE_LOO_G
-		if (eem_devinfo.GPU_2LINE) {
+		if (gpu_2line) {
 			det->MDES	= devinfo->GPU_LO_MDES;
 			det->BDES	= devinfo->GPU_LO_BDES;
 			det->DCMDET	= devinfo->GPU_LO_DCMDET;
@@ -2274,7 +2289,7 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 			det->SPEC       = devinfo->GPU_LO_SPEC;
 
 			det->VMAX		= VMAX_VAL_GL;
-			det->max_freq_khz = 850000;
+			det->max_freq_khz = GPU_M_FREQ_BASE;
 			det->loo_role = LOW_BANK;
 		} else {
 #endif
@@ -2288,18 +2303,14 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 			det->SPEC       = devinfo->GPU_SPEC;
 
 			det->VMAX		= VMAX_VAL_GPU;
-			det->max_freq_khz = 850000;
+			det->max_freq_khz = GPU_FREQ_BASE;
 #if ENABLE_LOO_G
 			det->loo_role = NO_LOO_BANK;
 		}
 #endif
-#if ENABLE_REMOVE_AGING
-		det->volt_aging[0] = 0 - AGING_VAL_GPU;
-#endif
-
-		det->features = FEA_INIT01 | FEA_INIT02 | FEA_MON;
+		det->volt_policy = 1;
 		det->low_temp_off = EXTRA_TEMP_OFF_GPU;
-		det->DVTFIXED = DVTFIXED_VAL_GPU_V2;
+		det->VMAX += det->DVTFIXED;
 
 		break;
 
@@ -2337,8 +2348,11 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 		det->MTDES	= devinfo->GPU_HI_MTDES;
 		det->SPEC       = devinfo->GPU_HI_SPEC;
 
+		det->volt_policy = 1;
+		det->low_temp_off = EXTRA_TEMP_OFF_GPU;
+		det->VMAX += det->DVTFIXED;
 
-		if (eem_devinfo.GPU_2LINE == 0) {
+		if (!gpu_2line) {
 			det->features = 0;
 			det->loo_role = NO_LOO_BANK;
 		}
@@ -2356,15 +2370,13 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 		det->MTDES	= devinfo->CPU_B_HI_MTDES;
 		det->SPEC	= devinfo->CPU_B_HI_SPEC;
 
-		if (eem_devinfo.PI_DVTFIX_B != 0) {
-			det->features =	FEA_INIT02;
-			det->DVTFIXED = eem_devinfo.PI_DVTFIX_B;
-			det->volt_policy = 1;
-			det->low_temp_off = EXTRA_TEMP_OFF;
-			det->VMAX += eem_devinfo.PI_DVTFIX_B;
-		}
+		det->DVTFIXED = eem_devinfo.PI_DVTFIX_B;
+		det->volt_policy = 1;
+		det->low_temp_off = EXTRA_TEMP_OFF_B;
+		det->VMAX += eem_devinfo.PI_DVTFIX_B;
 
-		if (!eem_devinfo.BIG_2LINE) {
+
+		if (!big_2line) {
 			det->features = 0;
 			det->loo_role = NO_LOO_BANK;
 		}
@@ -2403,7 +2415,7 @@ static void eem_init_det(struct eem_det *det, struct eem_devinfo *devinfo)
 		det->ops->get_freq_table(det);
 
 #if ENABLE_LOO_B
-	if ((eem_devinfo.BIG_2LINE) &&
+	if ((big_2line) &&
 		(det_id == EEM_DET_B_HI)) {
 		if (det->turn_pt != 0)
 			bcpu_final_init02_flag |= BIT(det_id);
@@ -2469,12 +2481,11 @@ static void eem_set_eem_volt(struct eem_det *det)
 	struct eem_ctrl *ctrl = id_to_eem_ctrl(det->ctrl_id);
 
 	FUNC_ENTER(FUNC_LV_HELP);
+
 	if (ctrl == NULL)
 		return;
-
 	ctrl->volt_update |= EEM_VOLT_UPDATE;
 	dsb(sy);
-	eem_debug("@@!In %s\n", __func__);
 	wake_up_interruptible(&ctrl->wq);
 #endif
 
@@ -2541,13 +2552,6 @@ static inline void handle_init01_isr(struct eem_det *det)
 	 */
 	 /* hw bug, workaround */
 	det->DCVOFFSETIN = ~(eem_read(EEM_DCVALUES) & 0xffff) + 1;
-	/* check if DCVALUES is minus and set DCVOFFSETIN to zero */
-	if (!g_fake_efuse && (det->DCVOFFSETIN & 0x8000))
-		det->DCVOFFSETIN = 0;
-
-#if ENABLE_MINIHQA
-	det->DCVOFFSETIN = 0;
-#endif
 
 #ifdef CORN_LOAD
 	if (corn_init)
@@ -2690,6 +2694,8 @@ static void read_volt_from_VOP(struct eem_det *det)
 	/* Check both high/low bank's voltage are ready */
 	if (det->loo_role != 0) {
 		couple_det = id_to_eem_det(det->loo_couple);
+		if (couple_det == NULL)
+			return;
 		if ((couple_det->init2_done == 0) ||
 			(couple_det->mon_vop30 == 0) ||
 			(couple_det->mon_vop74 == 0))
@@ -2947,6 +2953,8 @@ static inline void handle_init_err_isr(struct eem_det *det)
 		EEM_FREQPCT30, eem_read(EEM_FREQPCT30),
 		eem_read(EEM_FREQPCT74), eem_read(EEM_BASEADDR + 0xCE0),
 		eem_read(EEM_BASEADDR + 0xCE4));
+
+
 	eem_error("====================================================\n");
 
 	aee_kernel_warning("mt_eem", "@%s():%d, get_volt(%s) = 0x%08X\n",
@@ -3301,15 +3309,15 @@ static int eem_buck_get(struct platform_device *pdev)
 {
 	int ret = 0;
 
-	eem_regulator_vproc1 = regulator_get(&pdev->dev, "vproc11");
+	eem_regulator_vproc1 = regulator_get(&pdev->dev, "vproc1");
 	if (!eem_regulator_vproc1) {
-		eem_error("eem_regulator_vproc11 error\n");
+		eem_error("eem_regulator_vproc1 error\n");
 		return -EINVAL;
 	}
 
-	eem_regulator_vproc2 = regulator_get(&pdev->dev, "vproc12");
+	eem_regulator_vproc2 = regulator_get(&pdev->dev, "vproc2");
 	if (!eem_regulator_vproc2) {
-		eem_error("eem_regulator_vproc12 error\n");
+		eem_error("eem_regulator_vproc2 error\n");
 		return -EINVAL;
 	}
 
@@ -3450,7 +3458,7 @@ void eem_init01(void)
 #endif
 			}
 			timeout = 0;
-#if 1//angus todo
+#ifndef CONFIG_MACH_MT6785//angus todo
 			while (det->real_vboot != det->VBOOT) {
 				eem_debug
 			("@%s():%d, get_volt(%s) = 0x%08X, VBOOT = 0x%08X\n",
@@ -3634,7 +3642,7 @@ static void eem_dconfig_set_det(struct eem_det *det, struct device_node *node)
 #endif
 
 #if ENABLE_LOO_B
-				if (eem_devinfo.BIG_2LINE) {
+				if (big_2line) {
 					/* Change BCPU Low_bank & High_bank */
 					highdet = id_to_eem_det(EEM_DET_B_HI);
 					highdet->features = doe_initmon & 0x6;
@@ -3643,7 +3651,7 @@ static void eem_dconfig_set_det(struct eem_det *det, struct device_node *node)
 				break;
 			case EEM_DET_GPU:
 #if ENABLE_LOO_G
-				if (eem_devinfo.GPU_2LINE) {
+				if (gpu_2line) {
 					/* Change GPU Low_bank & High_bank */
 					highdet = id_to_eem_det(EEM_DET_GPU_HI);
 					highdet->features = doe_initmon & 0x6;
@@ -3848,8 +3856,8 @@ static int eem_resume(void)
 	if (ctrl_EEM_Enable) {
 		eem_error("Start EEM resume\n");
 		/* Reset EEM */
-		eem_write(INFRA_EEM_RST, 1);
-		eem_write(INFRA_EEM_CLR, 1);
+		eem_write(INFRA_EEM_RST, (1 << 5));
+		eem_write(INFRA_EEM_CLR, (1 << 5));
 		eem_init02(__func__);
 	}
 	return 0;
@@ -3967,7 +3975,6 @@ int mt_eem_status(enum eem_det_id id)
 	struct eem_det *det = id_to_eem_det(id);
 
 	FUNC_ENTER(FUNC_LV_API);
-
 	if (det == NULL)
 		return 0;
 	else if (det->ops == NULL)
@@ -4141,10 +4148,8 @@ static ssize_t eem_setmargin_proc_write(struct file *file,
 
 		ret = count;
 	} else if (!strncmp(cmd_str, "clamp", sizeof("clamp"))) {
-		det->volt_clamp = aging_val[0];
-		if ((aging_val[0] + det->volt_tbl_orig[0]) > det->VMAX)
-			det->volt_clamp =
-				det->VMAX - det->volt_tbl_orig[0];
+		if (aging_val[0] < 20)
+			det->volt_clamp = aging_val[0];
 
 		ret = count;
 	} else if (!strncmp(cmd_str, "setopp", sizeof("setopp"))) {
@@ -4231,7 +4236,7 @@ static int eem_dump_proc_show(struct seq_file *m, void *v)
 	/* Depend on EFUSE location */
 	for (i = 0; i < sizeof(struct eem_devinfo) / sizeof(unsigned int);
 		i++)
-		seq_printf(m, "M_HW_RES%d= 0x%08X\n", i, val[i]);
+		seq_printf(m, "M_HW_RES%d\t= 0x%08X\n", i, val[i]);
 
 	for (p = &pi_efuse_idx[0]; p->mdes_bdes_index != 0; p++) {
 		seq_printf(m, "ORIG_M_HW_RES%d\t= 0x%08X\n",
@@ -4700,33 +4705,12 @@ static struct notifier_block eem_pm_notifier_func = {
 static int __init eem_init(void)
 {
 	int err = 0;
-	int FT_VAL = 0;
-#ifdef DRCC_SUPPORT
-	spinlock_t record_lock;
-#endif
-
 #ifdef EEM_NOT_READY
 	return 0;
 #endif
 
 	eem_debug("[EEM] ctrl_EEM_Enable=%d\n", ctrl_EEM_Enable);
 
-#ifdef DRCC_SUPPORT
-	spin_lock_init(&record_lock);
-#endif
-
-#if EEM_FAKE_EFUSE
-	g_fake_efuse = 1;
-#endif
-
-#if defined(AGING_LOAD)
-	/* Aging load: Apply real efuse */
-	g_fake_efuse = 0;
-#endif
-	FT_VAL = get_devinfo_with_index(DEVINFO_IDX_0);
-	FT_VAL = (FT_VAL >> 4) & 0xF;
-	if (FT_VAL >= 2)
-		g_fake_efuse = 0;
 	get_devinfo();
 
 	/* move to eem_probe */

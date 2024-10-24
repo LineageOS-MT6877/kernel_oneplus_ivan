@@ -24,38 +24,52 @@ ccflags-y += \
 	-I$(srctree)/drivers/misc/mediatek/pmic/extbuck \
 	-I$(srctree)/drivers/misc/mediatek/pmic/include/mt6356	\
 	-I$(srctree)/drivers/misc/mediatek/pmic/include/mt6358	\
-	-I$(srctree)/drivers/misc/mediatek/thermal/mt6877/inc/mach  \
-	-I$(srctree)/drivers/misc/mediatek/base/power/include/gpufreq_v1/  \
-	-I$(srctree)/drivers/gpu/mediatek/gpufreq/   \
-	-I$(srctree)/drivers/gpu/mediatek/ged/include/   \
 	-I$(srctree)/drivers/misc/mediatek/thermal/$(CONFIG_MTK_PLATFORM)/inc/mach	\
 	-I$(srctree)/include/linux/	\
 	-I$(srctree)/drivers/misc/mediatek/dramc/$(MTK_PLATFORM)	\
-	-I$(EEM_ROOT_DIR)/mt6877/inc	\
-	-I$(srctree)/drivers/misc/mediatek/base/power/mcdi/include/
+	-I$(EEM_ROOT_DIR)/$(CONFIG_MTK_PLATFORM)/inc	\
+	-I$(srctree)/drivers/misc/mediatek/base/power/mcdi/include/        \
+	-I$(srctree)/drivers/misc/mediatek/thermal/mt6873/inc/mach  \
+	-I$(srctree)/drivers/misc/mediatek/base/power/include/gpufreq_v1/  \
+	-I$(srctree)/drivers/gpu/mediatek/gpufreq/   \
+	-I$(srctree)/drivers/gpu/mediatek/ged/include/
 
 ifeq ($(CONFIG_MTK_TINYSYS_MCUPM_SUPPORT), y)
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/mcupm/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/mcupm/$(MTK_PLATFORM)/
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6877v1_64_mcl_k419)
+ifeq ($(findstring _aging,$(PROJECT_DTB_NAMES)),_aging)
+subdir-ccflags-y += -DAGING_LOAD
+endif
+
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6873v1_64_mcl_k419)
+subdir-ccflags-y += -DMT6873
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6877v1_64_77t_mcl_k419)
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6873v1_64_6GB_mcl_k419)
+subdir-ccflags-y += -DMT6873
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6877v1_64_77tt_mcl_k419)
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6873v1_64_alpha_mcl_k419)
+subdir-ccflags-y += -DMT6873
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6877v1_64_120hz_vdo_dphy_mcl_k419)
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6873v1_64_90hz_cphy_mcl_k419)
+subdir-ccflags-y += -DMT6873
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
-ifeq ($(PROJECT_DTB_NAMES),mediatek/k6877v1_64_6gb_mcl_k419)
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6873v1_64_turbo_mcl_k419)
+subdir-ccflags-y += -DMT6875
+subdir-ccflags-y += -DMC50_LOAD
+endif
+
+ifeq ($(PROJECT_DTB_NAMES),mediatek/k6875v1_64_mcl_k419)
+subdir-ccflags-y += -DMT6875T
 subdir-ccflags-y += -DMC50_LOAD
 endif
 
