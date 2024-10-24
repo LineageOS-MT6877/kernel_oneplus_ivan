@@ -1,24 +1,16 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2017 MediaTek Inc.
- */
-
+ * Copyright (c) 2019 MediaTek Inc.
+*/
 
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/wakeup_reason.h>
-#include <linux/of.h>
-#include <linux/of_irq.h>
-#include <linux/of_address.h>
-#include <linux/io.h>
-#include <linux/interrupt.h>
-#include <linux/suspend.h>
-#include <linux/rtc.h>
 #include <asm/setup.h>
 
-#if defined(CONFIG_MTK_WATCHDOG) && defined(CONFIG_MTK_WD_KICKER)
+#if defined(CONFIG_MTK_WATCHDOG)
 #include <mt-plat/mtk_wd_api.h> /* ap wdt related definitons */
 #endif
 #if defined(CONFIG_MTK_PMIC_NEW_ARCH)
@@ -29,6 +21,7 @@
 #include <mtk_spm_internal.h>
 #include <mtk_spm_suspend_internal.h>
 #include <mtk_spm_resource_req_internal.h>
+#include <mtk_spm_resource_req.h>
 
 #include <mt-plat/mtk_ccci_common.h>
 
@@ -39,10 +32,9 @@
 #ifdef CONFIG_MTK_ICCS_SUPPORT
 #include <mtk_hps_internal.h>
 #endif
-
-#if defined(CONFIG_MTK_GIC_V3_EXT)
-#include <linux/irqchip/mtk-gic-extend.h>
-#endif /* CONFIG_MTK_GIC_V3_EXT */
+#include <mtk_sleep_internal.h>
+#include <mtk_idle_module.h>
+#include <mtk_power_gs_api.h>
 
 static int spm_dormant_sta;
 int spm_ap_mdsrc_req_cnt;
@@ -54,6 +46,9 @@ u8 spm_snapshot_golden_setting;
 
 struct wake_status spm_wakesta; /* record last wakesta */
 unsigned int spm_sleep_count;
+u64 app_last_wakeup_time;
+u64 app_last_sleep_time;
+u64 md_slp_duration;
 
 int __attribute__ ((weak)) mtk_enter_idle_state(int idx)
 {
@@ -72,96 +67,8 @@ int  __attribute__ ((weak)) vcorefs_get_curr_vcore(void)
 	printk_deferred("[name:spm&]NO %s !!!\n", __func__);
 	return -1;
 }
-#if defined(CONFIG_MTK_GIC_V3_EXT)
-struct spm_wakesrc_irq_list spm_wakesrc_irqs[] = {
-	/* mtk-kpd */
-	{ WAKE_SRC_R12_KP_IRQ_B, "mediatek,kp", 0, 0},
-	/* bt_cvsd_int */
-	{ WAKE_SRC_R12_CONN2AP_SPM_WAKEUP_B, "mediatek,mtk-btcvsd-snd", 0, 0},
-	/* wf_hif_int */
-	{ WAKE_SRC_R12_CONN2AP_SPM_WAKEUP_B, "mediatek,wifi", 0, 0},
-	/* conn2ap_btif_wakeup_out */
-	{ WAKE_SRC_R12_CONN2AP_SPM_WAKEUP_B, "mediatek,mt6779-consys", 0, 0},
-	/* conn2ap_sw_irq */
-	{ WAKE_SRC_R12_CONN2AP_SPM_WAKEUP_B, "mediatek,mt6779-consys", 2, 0},
-	/* CCIF_AP_DATA */
-	{ WAKE_SRC_R12_CCIF0_EVENT_B, "mediatek,ccci_ccif", 0, 0},
-	/* SCP A IPC2HOST */
-	{ WAKE_SRC_R12_SCP_SPM_IRQ_B, "mediatek,scp", 0, 0},
-	/* CLDMA_AP */
-	{ WAKE_SRC_R12_CLDMA_EVENT_B, "mediatek,dpmaif", 0, 0},
-};
 
-#define IRQ_NUMBER	\
-(sizeof(spm_wakesrc_irqs)/sizeof(struct spm_wakesrc_irq_list))
-static void get_spm_wakesrc_irq(void)
-{
-	int i;
-	struct device_node *node;
 
-	for (i = 0; i < IRQ_NUMBER; i++) {
-		if (spm_wakesrc_irqs[i].name == NULL)
-			continue;
-
-		node = of_find_compatible_node(NULL, NULL,
-			spm_wakesrc_irqs[i].name);
-		if (!node) {
-			pr_info("[name:spm&][SPM] find '%s' node failed\n",
-				spm_wakesrc_irqs[i].name);
-			continue;
-		}
-
-		spm_wakesrc_irqs[i].irq_no =
-			irq_of_parse_and_map(node,
-				spm_wakesrc_irqs[i].order);
-
-		if (!spm_wakesrc_irqs[i].irq_no) {
-			pr_info("[name:spm&][SPM] get '%s' failed\n",
-				spm_wakesrc_irqs[i].name);
-		}
-	}
-}
-#endif
-#ifdef CONFIG_PM
-static int spm_suspend_pm_event(struct notifier_block *notifier,
-			unsigned long pm_event, void *unused)
-{
-	struct timespec ts;
-	struct rtc_time tm;
-
-	getnstimeofday(&ts);
-	rtc_time_to_tm(ts.tv_sec, &tm);
-
-	switch (pm_event) {
-	case PM_HIBERNATION_PREPARE:
-		return NOTIFY_DONE;
-	case PM_RESTORE_PREPARE:
-		return NOTIFY_DONE;
-	case PM_POST_HIBERNATION:
-		return NOTIFY_DONE;
-	case PM_SUSPEND_PREPARE:
-		printk_deferred(
-		"[name:spm&][SPM] PM: suspend entry %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
-			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
-
-		return NOTIFY_DONE;
-	case PM_POST_SUSPEND:
-		printk_deferred(
-		"[name:spm&][SPM] PM: suspend exit %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
-			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
-
-		return NOTIFY_DONE;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block spm_suspend_pm_notifier_func = {
-	.notifier_call = spm_suspend_pm_event,
-	.priority = 0,
-};
-#endif
 void __attribute__ ((weak)) mtk8250_backup_dev(void)
 {
 	//pr_debug("NO %s !!!\n", __func__);
@@ -184,13 +91,20 @@ int __attribute__ ((weak)) mtk8250_request_to_sleep(void)
 	return 0;
 }
 
+#if defined(CONFIG_MTK_WATCHDOG) && defined(CONFIG_MTK_WD_KICKER)
+int  __attribute__ ((weak)) get_wd_api(struct wd_api **obj)
+{
+	printk_deferred("[name:spm&]NO %s !!!\n", __func__);
+	return -1;
+}
+#endif
+
 static u32 suspend_pcm_flags = {
-	/* SPM_FLAG_DISABLE_CPU_PDN | */
-	/* SPM_FLAG_DISABLE_INFRA_PDN | */
-	/* SPM_FLAG_DISABLE_DDRPHY_PDN | */
+	#if !defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
+	SPM_FLAG_DISABLE_SSPM_SRAM_SLEEP |
+	#endif
 	SPM_FLAG_DISABLE_VCORE_DVS |
-	SPM_FLAG_DISABLE_VCORE_DFS |
-	SPM_FLAG_SUSPEND_OPTION
+	SPM_FLAG_DISABLE_VCORE_DFS,
 };
 
 static u32 suspend_pcm_flags1 = {
@@ -199,23 +113,36 @@ static u32 suspend_pcm_flags1 = {
 	SPM_FLAG1_FORCE_CPU_BUCK_OFF |
 	SPM_FLAG1_DISABLE_VS1_VOTER |
 	SPM_FLAG1_DISABLE_VS2_VOTER,
-
 };
+
+static u32 slp_dp_pcm_flags = {
+	#if !defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
+	SPM_FLAG_DISABLE_SSPM_SRAM_SLEEP |
+	#endif
+	SPM_FLAG_DISABLE_INFRA_PDN |
+	SPM_FLAG_DISABLE_VCORE_DVS |
+	SPM_FLAG_DISABLE_VCORE_DFS |
+	SPM_FLAG_KEEP_CSYSPWRUPACK_HIGH |
+	SPM_FLAG_USE_SRCCLKENO2,
+};
+
+static u32 slp_dp_pcm_flags1 = {
+	SPM_FLAG1_ENABLE_BIG_BUCK_OFF |
+	SPM_FLAG1_ENABLE_BIG_BUCK_ON |
+	SPM_FLAG1_FORCE_CPU_BUCK_OFF |
+	SPM_FLAG1_DISABLE_VS1_VOTER |
+	SPM_FLAG1_DISABLE_VS2_VOTER,
+};
+
+struct pwr_ctrl pwrctrl_suspend;
 
 static inline void spm_suspend_footprint(enum spm_suspend_step step)
 {
-#ifdef CONFIG_MTK_AEE_IPANIC
+#ifdef CONFIG_MTK_RAM_CONSOLE
 	aee_rr_rec_spm_suspend_val(step |
 		(smp_processor_id() << CPU_FOOTPRINT_SHIFT));
 #endif
 }
-
-static struct pwr_ctrl suspend_ctrl;
-
-struct spm_lp_scen __spm_suspend = {
-	.pwrctrl = &suspend_ctrl,
-	.wakestatus = &suspend_info[0],
-};
 
 static void spm_trigger_wfi_for_sleep(struct pwr_ctrl *pwrctrl)
 {
@@ -231,18 +158,18 @@ static void spm_trigger_wfi_for_sleep(struct pwr_ctrl *pwrctrl)
 		SMC_CALL(LEGACY_SLEEP, 0, 0, 0);
 		SMC_CALL(ARGS, SPM_ARGS_SUSPEND_FINISH, 0, 0);
 	}
+	if (is_infra_pdn(pwrctrl->pcm_flags))
+		mtk8250_restore_dev();
 
 	if (spm_dormant_sta < 0) {
 		aee_sram_printk("spm_dormant_sta %d", spm_dormant_sta);
-		pr_info("[SPM] spm_dormant_sta %d", spm_dormant_sta);
+		printk_deferred("[name:spm&][SPM] spm_dormant_sta %d"
+			, spm_dormant_sta);
 	}
-
-	if (is_infra_pdn(pwrctrl->pcm_flags))
-		mtk8250_restore_dev();
 }
 
-static void spm_suspend_pcm_setup_before_wfi(u32 cpu,
-		struct pwr_ctrl *pwrctrl)
+static void spm_suspend_pcm_setup_before_wfi(unsigned int ex_flag,
+	u32 cpu, struct pwr_ctrl *pwrctrl)
 {
 	unsigned int resource_usage = 0;
 
@@ -250,9 +177,18 @@ static void spm_suspend_pcm_setup_before_wfi(u32 cpu,
 	iccs_enter_low_power_state();
 #endif
 
+	/* Only get resource usage from user SCP */
 	resource_usage = spm_get_resource_usage();
 
-	spm_suspend_pre_process(pwrctrl);
+	if ((ex_flag & SPM_SUSPEND_PLAT_SLP_DP) != 0) {
+		resource_usage &= (~(SPM_RESOURCE_CK_26M |
+				     SPM_RESOURCE_AXI_BUS));
+		resource_usage |=
+			spm_get_resource_usage_by_user(SPM_RESOURCE_USER_SCP);
+		mtk_idle_module_notifier_call_chain(MTK_IDLE_MAINPLL_OFF);
+		spm_suspend_pre_process(SPM_DPIDLE_ENTER, pwrctrl);
+	} else
+		spm_suspend_pre_process(SPM_SUSPEND, pwrctrl);
 
 	spm_dump_world_clk_cntcv();
 	spm_set_sysclk_settle();
@@ -260,18 +196,21 @@ static void spm_suspend_pcm_setup_before_wfi(u32 cpu,
 	pwrctrl->timer_val = __spm_get_pcm_timer_val(pwrctrl);
 
 	mt_secure_call(MTK_SIP_KERNEL_SPM_SUSPEND_ARGS, pwrctrl->pcm_flags,
-		       pwrctrl->pcm_flags1, pwrctrl->timer_val, resource_usage);
+		pwrctrl->pcm_flags1, pwrctrl->timer_val, resource_usage);
 }
 
-static void spm_suspend_pcm_setup_after_wfi(u32 cpu, struct pwr_ctrl *pwrctrl)
+static void spm_suspend_pcm_setup_after_wfi(unsigned int ex_flag,
+	u32 cpu, struct pwr_ctrl *pwrctrl)
 {
-	spm_suspend_post_process(pwrctrl);
+	if ((ex_flag & SPM_SUSPEND_PLAT_SLP_DP) != 0) {
+		mtk_idle_module_notifier_call_chain(MTK_IDLE_MAINPLL_ON);
+		spm_suspend_post_process(SPM_DPIDLE_LEAVE, pwrctrl);
+	} else
+		spm_suspend_post_process(SPM_RESUME, pwrctrl);
 }
 
-int sleep_ddr_status;
-int sleep_vcore_status;
-
-static unsigned int spm_output_wake_reason(struct wake_status *wakesta)
+static unsigned int spm_output_wake_reason(unsigned int ex_flag,
+	struct wake_status *wakesta)
 {
 	unsigned int wr;
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
@@ -279,17 +218,16 @@ static unsigned int spm_output_wake_reason(struct wake_status *wakesta)
 	int hif_id;
 #endif
 #endif
-#if defined(CONFIG_MTK_GIC_V3_EXT)
-	unsigned int irq_no;
-	int i;
-#endif
 
 	if (spm_sleep_count >= 0xfffffff0)
 		spm_sleep_count = 0;
 	else
 		spm_sleep_count++;
 
-	wr = __spm_output_wake_reason(wakesta, true, "suspend");
+	if ((ex_flag & SPM_SUSPEND_PLAT_SLP_DP) != 0)
+		wr = __spm_output_wake_reason(wakesta, true, "sleep_dpidle");
+	else
+		wr = __spm_output_wake_reason(wakesta, true, "suspend");
 
 	memcpy(&suspend_info[log_wakesta_cnt], wakesta,
 		sizeof(struct wake_status));
@@ -306,25 +244,23 @@ static unsigned int spm_output_wake_reason(struct wake_status *wakesta)
 	if (log_wakesta_index >= 0xFFFFFFF0)
 		log_wakesta_index = 0;
 
-	aee_sram_printk("sleep_count = %d\n", spm_sleep_count);
-	printk_deferred("[name:spm&][SPM] sleep_count = %d\n", spm_sleep_count);
-
+	aee_sram_printk("dormant = %d, sleep_count = %d\n",
+		spm_dormant_sta, spm_sleep_count);
+	printk_deferred("[name:spm&][SPM] dormant = %d, sleep_count = %d\n",
+		spm_dormant_sta, spm_sleep_count);
 	if (spm_ap_mdsrc_req_cnt != 0) {
 		aee_sram_printk("warning: spm_ap_mdsrc_req_cnt = %d, ",
 			spm_ap_mdsrc_req_cnt);
-		printk_deferred("[name:spm&][SPM]warning: spm_ap_mdsrc_req_cnt = %d, ",
+		printk_deferred("[name:spm&][SPM ]warning: spm_ap_mdsrc_req_cnt = %d, ",
 			spm_ap_mdsrc_req_cnt);
-		aee_sram_printk("r7[ap_mdsrc_req] = 0x%x\n",
-			spm_read(SPM_POWER_ON_VAL1) & (1 << 17));
-		printk_deferred("r7[ap_mdsrc_req] = 0x%x\n",
-			spm_read(SPM_POWER_ON_VAL1) & (1 << 17));
 	}
 
-// FIXME : check if there is alternative for eint info
-//#if defined(CONFIG_PINCTRL_MTK)
-//	if (wakesta->r12 & R12_EINT_EVENT_B)
-//		mt_eint_print_status();
-//#endif
+	printk_deferred("[name:spm&][SPM] Suspended for %d.%03d seconds",
+		PCM_TICK_TO_SEC(wakesta->timer_out),
+		PCM_TICK_TO_SEC((wakesta->timer_out % PCM_32K_TICKS_PER_SEC)
+		* 1000));
+
+	log_irq_wakeup_reason(mtk_spm_get_irq_0());
 
 #ifdef CONFIG_MTK_CCCI_DEVICES
 		exec_ccci_kern_func_by_md_id(0, ID_DUMP_MD_SLEEP_MODE,
@@ -364,52 +300,7 @@ static unsigned int spm_output_wake_reason(struct wake_status *wakesta)
 	}
 #endif
 #endif
-
-#if defined(CONFIG_MTK_GIC_V3_EXT)
-	for (i = 0; i < IRQ_NUMBER; i++) {
-		if (spm_wakesrc_irqs[i].name == NULL ||
-			!spm_wakesrc_irqs[i].irq_no){
-			continue;
-                      }
-		if (spm_wakesrc_irqs[i].wakesrc & wakesta->r12) {
-			irq_no = spm_wakesrc_irqs[i].irq_no;
-			if(mt_irq_get_pending(irq_no))
-				log_irq_wakeup_reason(irq_no);
-		}
-	}
-#endif
 	return wr;
-}
-
-/*
- * wakesrc: WAKE_SRC_XXX
- * enable : enable or disable @wakesrc
- * replace: if true, will replace the default setting
- */
-int spm_set_sleep_wakesrc(u32 wakesrc, bool enable, bool replace)
-{
-	unsigned long flags;
-
-	if (spm_is_wakesrc_invalid(wakesrc))
-		return -EINVAL;
-
-	spin_lock_irqsave(&__spm_lock, flags);
-	if (enable) {
-		if (replace)
-			__spm_suspend.pwrctrl->wake_src = wakesrc;
-		else
-			__spm_suspend.pwrctrl->wake_src |= wakesrc;
-	} else {
-		if (replace)
-			__spm_suspend.pwrctrl->wake_src = 0;
-		else
-			__spm_suspend.pwrctrl->wake_src &= ~wakesrc;
-	}
-	SMC_CALL(PWR_CTRL_ARGS, SPM_PWR_CTRL_SUSPEND,
-			PW_WAKE_SRC, __spm_suspend.pwrctrl->wake_src);
-	spin_unlock_irqrestore(&__spm_lock, flags);
-
-	return 0;
 }
 
 /*
@@ -449,7 +340,7 @@ int __attribute__((weak)) get_dlpt_imix_spm(void)
 #endif
 #endif
 
-unsigned int spm_go_to_sleep(void)
+unsigned int spm_go_to_sleep_ex(unsigned int ex_flag)
 {
 	u32 sec = 2;
 	unsigned long flags;
@@ -460,8 +351,10 @@ unsigned int spm_go_to_sleep(void)
 	static unsigned int last_wr = WR_NONE;
 	struct pwr_ctrl *pwrctrl;
 	u32 cpu = 0;
-	u32 spm_flags = suspend_pcm_flags;
-	u32 spm_flags1 = suspend_pcm_flags1;
+	u32 spm_flags = (ex_flag & SPM_SUSPEND_PLAT_SLP_DP) ?
+		slp_dp_pcm_flags : suspend_pcm_flags;
+	u32 spm_flags1 = (ex_flag & SPM_SUSPEND_PLAT_SLP_DP) ?
+		slp_dp_pcm_flags1 : suspend_pcm_flags1;
 
 	spm_suspend_footprint(SPM_SUSPEND_ENTER);
 
@@ -473,7 +366,7 @@ unsigned int spm_go_to_sleep(void)
 #endif
 #endif
 
-	pwrctrl = __spm_suspend.pwrctrl;
+	pwrctrl = &pwrctrl_suspend;
 
 	pwrctrl->wake_src = SMC_CALL(GET_PWR_CTRL_ARGS,
 			SPM_PWR_CTRL_SUSPEND, PW_WAKE_SRC, 0);
@@ -488,6 +381,7 @@ unsigned int spm_go_to_sleep(void)
 #endif
 	pwrctrl->timer_val = sec * 32768;
 
+	/* set 30 seconds for PCM_WDT during AP to ATF */
 	SMC_CALL(ARGS, SPM_ARGS_PCM_WDT, 1, 30);
 
 #if defined(CONFIG_MTK_WATCHDOG) && defined(CONFIG_MTK_WD_KICKER)
@@ -510,13 +404,30 @@ unsigned int spm_go_to_sleep(void)
 		  sec, pwrctrl->wake_src, is_cpu_pdn(pwrctrl->pcm_flags),
 		  is_infra_pdn(pwrctrl->pcm_flags));
 
-	spm_suspend_pcm_setup_before_wfi(cpu, pwrctrl);
+	spm_suspend_pcm_setup_before_wfi(ex_flag, cpu, pwrctrl);
+
+	/*if (slp_dump_subsys_sleep_duration)
+		md_slp_duration = get_md_slp_duration();
+
+	if (slp_dump_ap_awake_duration) {
+		app_last_sleep_time =
+			(u64)_golden_read_reg(WORLD_CLK_CNTCV_H) << 32
+			| _golden_read_reg(WORLD_CLK_CNTCV_L);
+		printk_deferred(
+			"[name:spm&][SPM] Awaked for %lld.%03lld seconds",
+			WORLD_CLK_TICK_TO_SEC((app_last_sleep_time
+				- app_last_wakeup_time)),
+			WORLD_CLK_TICK_TO_SEC(((app_last_sleep_time
+				- app_last_wakeup_time)
+			% WORLD_CLK_13M_TICKS_PER_SEC) * 1000));
+	}*/
 
 	spm_suspend_footprint(SPM_SUSPEND_ENTER_UART_SLEEP);
 
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
 	if (mtk8250_request_to_sleep()) {
 		last_wr = WR_UART_BUSY;
+		printk_deferred("[name:spm&]Fail to request uart sleep\n");
 		goto RESTORE_IRQ;
 	}
 #endif
@@ -541,25 +452,29 @@ RESTORE_IRQ:
 
 	spm_suspend_footprint(SPM_SUSPEND_ENTER_UART_AWAKE);
 
-	spm_suspend_pcm_setup_after_wfi(0, pwrctrl);
+	spm_suspend_pcm_setup_after_wfi(ex_flag, cpu, pwrctrl);
 
 	/* record last wakesta */
-	last_wr = spm_output_wake_reason(&spm_wakesta);
+	last_wr = spm_output_wake_reason(ex_flag, &spm_wakesta);
 	mtk_spm_irq_restore();
 
+	/*if (slp_dump_ap_awake_duration) {
+		app_last_wakeup_time =
+			(u64)_golden_read_reg(WORLD_CLK_CNTCV_H) << 32
+			| _golden_read_reg(WORLD_CLK_CNTCV_L);
+	}
+
+	if (slp_dump_subsys_sleep_duration &&
+		spm_wakesta.timer_out >= PCM_32K_TICKS_FIVE_SEC)
+		printk_deferred("[name:spm&][SPM] md_slp_duration = %llu",
+			get_md_slp_duration() - md_slp_duration);
+*/
 
 	spin_unlock_irqrestore(&__spm_lock, flags);
 
 #if defined(CONFIG_MTK_WATCHDOG) && defined(CONFIG_MTK_WD_KICKER)
 	if (!wd_ret) {
-		if (!pwrctrl->wdt_disable)
-			wd_api->wd_resume_notify();
-		else {
-			aee_sram_printk("pwrctrl->wdt_disable %d\n",
-				pwrctrl->wdt_disable);
-			printk_deferred("[name:spm&][SPM] pwrctrl->wdt_disable %d\n",
-				pwrctrl->wdt_disable);
-		}
+		wd_api->wd_resume_notify();
 		wd_api->wd_spmwdt_mode_config(WD_REQ_DIS, WD_REQ_RST_MODE);
 	}
 #endif
@@ -572,9 +487,6 @@ RESTORE_IRQ:
 #endif
 	spm_suspend_footprint(0);
 
-	if (last_wr == WR_ABORT)
-		rekick_vcorefs_scenario();
-
 	if (pwrctrl->wakelock_timer_val) {
 		aee_sram_printk("#@# %s(%d) calling spm_pm_stay_awake()\n",
 			__func__, __LINE__);
@@ -586,25 +498,9 @@ RESTORE_IRQ:
 	return last_wr;
 }
 
-int __init spm_logger_init(void)
+unsigned int spm_go_to_sleep(void)
 {
-	int ret;
-
-#if defined(CONFIG_MTK_GIC_V3_EXT)
-	get_spm_wakesrc_irq();
-#endif
-
-#ifdef CONFIG_PM
-	ret = register_pm_notifier(&spm_suspend_pm_notifier_func);
-	if (ret) {
-		pr_debug("[name:spm&][SPM] Failed to register PM notifier.\n");
-		return ret;
-	}
-#endif /* CONFIG_PM */
-
-	return 0;
+	return spm_go_to_sleep_ex(0);
 }
-
-late_initcall_sync(spm_logger_init);
 
 MODULE_DESCRIPTION("SPM-Sleep Driver v0.1");
