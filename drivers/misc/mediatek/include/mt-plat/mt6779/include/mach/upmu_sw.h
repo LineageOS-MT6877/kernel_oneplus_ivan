@@ -1,16 +1,19 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (C) 2018 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
 #ifndef _MT_PMIC_UPMU_SW_H_
 #define _MT_PMIC_UPMU_SW_H_
 
-#ifdef CONFIG_MACH_MT6893
-#include "upmu_hw.h"
-#endif
-#ifdef CONFIG_MACH_MT6885
 #include <mach/upmu_hw.h>
-#endif
 
 #define AUXADC_SUPPORT_IMM_CURRENT_MODE
 #define BATTERY_SW_INIT
@@ -75,9 +78,7 @@ extern void (*low_battery_callback)(LOW_BATTERY_LEVEL tag);
 extern void register_low_battery_notify(
 			void (*low_battery_callback)(LOW_BATTERY_LEVEL tag),
 			LOW_BATTERY_PRIO prio_val);
-extern void register_low_battery_notify_ext(
-			void (*low_battery_callback)(LOW_BATTERY_LEVEL tag),
-			LOW_BATTERY_PRIO prio_val);
+
 
 /* =============================================================================
  * Battery OC level define
@@ -97,8 +98,7 @@ enum BATTERY_OC_PRIO_TAG {
 	BATTERY_OC_PRIO_GPU = 2,
 	BATTERY_OC_PRIO_MD = 3,
 	BATTERY_OC_PRIO_MD5 = 4,
-	BATTERY_OC_PRIO_FLASHLIGHT = 5,
-	BATTERY_OC_PRIO_CHARGER = 6
+	BATTERY_OC_PRIO_FLASHLIGHT = 5
 };
 
 extern void (*battery_oc_callback)(BATTERY_OC_LEVEL tag);
@@ -135,10 +135,7 @@ extern void
 register_battery_percent_notify(
 		void (*battery_percent_callback)(BATTERY_PERCENT_LEVEL tag),
 		BATTERY_PERCENT_PRIO prio_val);
-extern void
-register_battery_percent_notify_ext(
-		void (*battery_percent_callback)(BATTERY_PERCENT_LEVEL tag),
-		BATTERY_PERCENT_PRIO prio_val);
+
 /*=============================================================================
  * DLPT define
  *=============================================================================

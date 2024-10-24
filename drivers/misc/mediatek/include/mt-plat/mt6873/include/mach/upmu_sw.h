@@ -1,16 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 #ifndef _MT_PMIC_UPMU_SW_H_
 #define _MT_PMIC_UPMU_SW_H_
 
-#ifdef CONFIG_MACH_MT6893
-#include "upmu_hw.h"
-#endif
-#ifdef CONFIG_MACH_MT6885
 #include <mach/upmu_hw.h>
-#endif
 
 #define AUXADC_SUPPORT_IMM_CURRENT_MODE
 #define BATTERY_SW_INIT

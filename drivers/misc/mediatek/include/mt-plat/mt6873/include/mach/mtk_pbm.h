@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef _MT_PBM_
 #define _MT_PBM_
@@ -10,7 +10,7 @@
 #include <mach/mtk_pmic.h>
 #include <mach/mtk_mdpm_api.h>
 
-#ifdef DISABLE_DLPT_FEATURE
+#if defined(DISABLE_DLPT_FEATURE) && !defined(DLPT_FEATURE_SUPPORT)
 #define DISABLE_PBM_FEATURE
 #endif
 

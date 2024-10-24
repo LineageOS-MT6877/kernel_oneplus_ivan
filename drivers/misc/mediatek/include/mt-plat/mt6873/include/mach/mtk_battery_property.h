@@ -1,7 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
+
 #ifndef _MTK_BATTERY_PROPERTY_H
 #define _MTK_BATTERY_PROPERTY_H
 
@@ -67,7 +68,7 @@
 #define DIFFERENCE_FULL_CV 1000 /*0.01%*/
 #define PSEUDO1_EN 1
 #define PSEUDO100_EN 1
-#define PSEUDO100_EN_DIS 0
+#define PSEUDO100_EN_DIS 1
 
 #define DIFF_SOC_SETTING 50	/* 0.01% */
 #define DIFF_BAT_TEMP_SETTING 1
@@ -166,7 +167,7 @@
 #define ZCV_SUSPEND_TIME 7
 #define SLEEP_CURRENT_AVG 200 /*0.1mA*/
 #define ZCV_COM_VOL_LIMIT 50 /* 50mv */
-#define ZCV_CAR_GAP_PERCENTAGE 5
+#define ZCV_CAR_GAP_PERCENTAGE 1
 
 /* Additional battery table */
 #define ADDITIONAL_BATTERY_TABLE_EN 1
@@ -191,12 +192,7 @@
 
 #define BATTERY_TMP_TO_DISABLE_GM30 -50
 #define BATTERY_TMP_TO_DISABLE_NAFG -35
-#ifndef OPLUS_FEATURE_CHG_BASIC
-/* 2020/10/30, return -30C when battery removed */
 #define DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG 25
-#else
-#define DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG -30
-#endif
 #define BATTERY_TMP_TO_ENABLE_NAFG -20
 /* #define GM30_DISABLE_NAFG */
 
