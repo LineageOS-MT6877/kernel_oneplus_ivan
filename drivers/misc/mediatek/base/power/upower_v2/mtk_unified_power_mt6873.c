@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -20,7 +20,9 @@
 #include <mt-plat/mtk_chip.h>
 
 /* local include */
+#ifdef CONFIG_MTK_CPU_FREQ
 #include "mach/mtk_cpufreq_api.h"
+#endif
 #include "mtk_upower.h"
 #include "mtk_unified_power_data.h"
 #include "mtk_devinfo.h"
@@ -34,22 +36,22 @@
 #undef  BIT
 #define BIT(bit)	(1U << (bit))
 
-#define MSB(range)	(1 ? range)
-#define LSB(range)	(0 ? range)
+#define M6873T(range)	(1 ? range)
+#define L6873T(range)	(0 ? range)
 /**
- * Genearte a mask wher MSB to LSB are all 0b1
- * @r:	Range in the form of MSB:LSB
+ * Genearte a mask wher M6873T to L6873T are all 0b1
+ * @r:	Range in the form of M6873T:L6873T
  */
 #define BITMASK(r)	\
-	(((unsigned int) -1 >> (31 - MSB(r))) & ~((1U << LSB(r)) - 1))
+	(((unsigned int) -1 >> (31 - M6873T(r))) & ~((1U << L6873T(r)) - 1))
 
 /**
- * Set value at MSB:LSB. For example, BITS(7:3, 0x5A)
+ * Set value at M6873T:L6873T. For example, BITS(7:3, 0x5A)
  * will return a value where bit 3 to bit 7 is 0x5A
- * @r:	Range in the form of MSB:LSB
+ * @r:	Range in the form of M6873T:L6873T
  */
-/* BITS(MSB:LSB, value) => Set value at MSB:LSB  */
-#define BITS(r, val)	((val << LSB(r)) & BITMASK(r))
+/* BITS(M6873T:L6873T, value) => Set value at M6873T:L6873T  */
+#define BITS(r, val)	((val << L6873T(r)) & BITMASK(r))
 
 #define GET_BITS_VAL(_bits_, _val_)   \
 	(((_val_) & (BITMASK(_bits_))) >> ((0) ? _bits_))
@@ -70,102 +72,58 @@ int degree_set[NR_UPOWER_DEGREE] = {
 #define INIT_UPOWER_TBL_INFOS(name, tbl) {__stringify(name), &tbl}
 struct upower_tbl_info
 	upower_tbl_infos_list[NR_UPOWER_TBL_LIST][NR_UPOWER_BANK] = {
-	/* MT6768 */
+	/* 6873 */
 	[0] = {
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6768),
+				upower_tbl_l_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6768),
+				upower_tbl_b_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6768),
+				upower_tbl_cluster_l_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6768),
+				upower_tbl_cluster_b_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6768),
+				upower_tbl_cci_6873),
 	},
-	/* MT6767 */
+	/* 6873T (Turbo Mode) */
 	[1] = {
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6767),
+				upower_tbl_l_6873TB),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6767),
+				upower_tbl_b_6873TB),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6767),
+				upower_tbl_cluster_l_6873TB),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6767),
+				upower_tbl_cluster_b_6873TB),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6767),
+				upower_tbl_cci_6873TB),
 	},
-
-	/* MT6768_PRO */
+	/* 6873T */
 	[2] = {
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_PRO),
+				upower_tbl_l_6873T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_PRO),
+				upower_tbl_b_6873T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_PRO),
+				upower_tbl_cluster_l_6873T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_PRO),
+				upower_tbl_cluster_b_6873T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_PRO),
+				upower_tbl_cci_6873T),
 	},
-	/* MT6768 */
+	/* 6873 */
 	[3] = {
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6768_v7),
+				upower_tbl_l_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6768_v7),
+				upower_tbl_b_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6768_v7),
+				upower_tbl_cluster_l_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6768_v7),
+				upower_tbl_cluster_b_6873),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6768_v7),
+				upower_tbl_cci_6873),
 	},
-	/* MT6767 */
-	[4] = {
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6767_v7),
-	},
-
-	/* MT6768_PRO */
-	[5] = {
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_PRO_v7),
-	},
-
-	/* MT6768_G75 */
-	[6] = {
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_G75),
-	},
-
-
 };
 /* Upower will know how to apply voltage that comes from EEM */
 unsigned char upower_recognize_by_eem[NR_UPOWER_BANK] = {
@@ -255,9 +213,9 @@ int cpu_cluster_mapping(unsigned int cpu)
 {
 	enum upower_bank bank = UPOWER_BANK_LL;
 
-	if (cpu < 6) /* cpu 0-5 */
+	if (cpu < 4) /* cpu 0-3 */
 		bank = UPOWER_BANK_LL;
-	else if (cpu < 8) /* cpu 6-7 */
+	else if (cpu < 8) /* cpu 4-7 */
 		bank = UPOWER_BANK_L;
 
 	return bank;
@@ -273,13 +231,14 @@ int cpu_cluster_mapping(unsigned int cpu)
 
 void get_original_table(void)
 {
-	unsigned short idx = 0; /* default use MT6771T_FY */
+	unsigned short idx = 0; /* default use MT6771T_6785 */
 	int i, j;
 
+#ifdef CONFIG_MTK_CPU_FREQ
 	idx = mt_cpufreq_get_cpu_level();
-
-	if (idx >= NR_UPOWER_TBL_LIST)
-		idx = 0;
+#else
+	idx = 0;
+#endif
 
 	/* get location of reference table */
 	upower_tbl_infos = &upower_tbl_infos_list[idx][0];
@@ -299,8 +258,8 @@ void get_original_table(void)
 	/* p_upower_tbl_infos = upower_tbl_infos; */
 
 #if 0
-	upower_debug("upower_tbl_ll_1_FY %p\n", &upower_tbl_ll_1_FY);
-	upower_debug("upower_tbl_ll_2_FY %p\n", &upower_tbl_ll_2_FY);
+	upower_debug("upower_tbl_ll_1_6785 %p\n", &upower_tbl_ll_1_6785);
+	upower_debug("upower_tbl_ll_2_6785 %p\n", &upower_tbl_ll_2_6785);
 #endif
 
 	/*

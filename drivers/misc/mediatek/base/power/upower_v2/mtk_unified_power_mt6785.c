@@ -34,22 +34,8 @@
 #undef  BIT
 #define BIT(bit)	(1U << (bit))
 
-#define MSB(range)	(1 ? range)
-#define LSB(range)	(0 ? range)
-/**
- * Genearte a mask wher MSB to LSB are all 0b1
- * @r:	Range in the form of MSB:LSB
- */
-#define BITMASK(r)	\
-	(((unsigned int) -1 >> (31 - MSB(r))) & ~((1U << LSB(r)) - 1))
-
-/**
- * Set value at MSB:LSB. For example, BITS(7:3, 0x5A)
- * will return a value where bit 3 to bit 7 is 0x5A
- * @r:	Range in the form of MSB:LSB
- */
-/* BITS(MSB:LSB, value) => Set value at MSB:LSB  */
-#define BITS(r, val)	((val << LSB(r)) & BITMASK(r))
+#define M6785T(range)	(1 ? range)
+#define L6785T(range)	(0 ? range)
 
 #define GET_BITS_VAL(_bits_, _val_)   \
 	(((_val_) & (BITMASK(_bits_))) >> ((0) ? _bits_))
@@ -70,101 +56,46 @@ int degree_set[NR_UPOWER_DEGREE] = {
 #define INIT_UPOWER_TBL_INFOS(name, tbl) {__stringify(name), &tbl}
 struct upower_tbl_info
 	upower_tbl_infos_list[NR_UPOWER_TBL_LIST][NR_UPOWER_BANK] = {
-	/* MT6768 */
+	/* 6785 */
 	[0] = {
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6768),
+				upower_tbl_l_6785),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6768),
+				upower_tbl_b_6785),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6768),
+				upower_tbl_cluster_l_6785),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6768),
+				upower_tbl_cluster_b_6785),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6768),
+				upower_tbl_cci_6785),
 	},
-	/* MT6767 */
+	/* 6785T */
 	[1] = {
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6767),
+				upower_tbl_l_6785T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6767),
+				upower_tbl_b_6785T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6767),
+				upower_tbl_cluster_l_6785T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6767),
+				upower_tbl_cluster_b_6785T),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6767),
+				upower_tbl_cci_6785T),
 	},
 
-	/* MT6768_PRO */
+	/* 6783 */
 	[2] = {
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_PRO),
+				upower_tbl_l_6783),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_PRO),
+				upower_tbl_b_6783),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_PRO),
+				upower_tbl_cluster_l_6783),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_PRO),
+				upower_tbl_cluster_b_6783),
 		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_PRO),
+				upower_tbl_cci_6783),
 	},
-	/* MT6768 */
-	[3] = {
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6768_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6768_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6768_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6768_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6768_v7),
-	},
-	/* MT6767 */
-	[4] = {
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_6767_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_6767_v7),
-	},
-
-	/* MT6768_PRO */
-	[5] = {
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_PRO_v7),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_PRO_v7),
-	},
-
-	/* MT6768_G75 */
-	[6] = {
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_LL,
-				upower_tbl_l_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_L,
-				upower_tbl_b_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_LL,
-				upower_tbl_cluster_l_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CLS_L,
-				upower_tbl_cluster_b_G75),
-		INIT_UPOWER_TBL_INFOS(UPOWER_BANK_CCI,
-				upower_tbl_cci_G75),
-	},
-
 
 };
 /* Upower will know how to apply voltage that comes from EEM */
@@ -273,13 +204,10 @@ int cpu_cluster_mapping(unsigned int cpu)
 
 void get_original_table(void)
 {
-	unsigned short idx = 0; /* default use MT6771T_FY */
+	unsigned short idx = 0; /* default use MT6771T_6785 */
 	int i, j;
 
 	idx = mt_cpufreq_get_cpu_level();
-
-	if (idx >= NR_UPOWER_TBL_LIST)
-		idx = 0;
 
 	/* get location of reference table */
 	upower_tbl_infos = &upower_tbl_infos_list[idx][0];
@@ -299,8 +227,8 @@ void get_original_table(void)
 	/* p_upower_tbl_infos = upower_tbl_infos; */
 
 #if 0
-	upower_debug("upower_tbl_ll_1_FY %p\n", &upower_tbl_ll_1_FY);
-	upower_debug("upower_tbl_ll_2_FY %p\n", &upower_tbl_ll_2_FY);
+	upower_debug("upower_tbl_ll_1_6785 %p\n", &upower_tbl_ll_1_6785);
+	upower_debug("upower_tbl_ll_2_6785 %p\n", &upower_tbl_ll_2_6785);
 #endif
 
 	/*
