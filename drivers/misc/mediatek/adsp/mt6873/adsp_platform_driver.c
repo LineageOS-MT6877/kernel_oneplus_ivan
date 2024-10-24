@@ -4,9 +4,7 @@
  */
 
 #include <linux/sysfs.h>
-#ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
-#endif
 #include <linux/of.h>
 #include <linux/io.h>
 #include <linux/delay.h>
@@ -27,7 +25,7 @@
 #include <linux/suspend.h>
 #include <linux/arm-smccc.h> /* for Kernel Native SMC API */
 #include <mt-plat/mtk_secure_api.h> /* for SMC ID table */
-#include <mt6885-afe-common.h>
+#include <mt6873-afe-common.h>
 
 struct wait_queue_head adsp_waitq;
 struct workqueue_struct *adsp_wq;
@@ -196,6 +194,10 @@ bool is_adsp_load(void)
 
 static int adsp_after_bootup(struct adsp_priv *pdata)
 {
+#ifdef BRINGUP_ADSP
+	/* disable adsp suspend by registering feature */
+	_adsp_register_feature(pdata->id, SYSTEM_FEATURE_ID, 0);
+#endif
 	return adsp_awake_unlock(pdata->id);
 }
 
