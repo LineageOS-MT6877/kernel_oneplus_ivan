@@ -1,14 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2018 MediaTek Inc.
- */
+ * Copyright (c) 2019 MediaTek Inc.
+*/
 
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/regulator/consumer.h>
-#include <linux/nvmem-consumer.h>
+
 #ifdef CONFIG_MTK_FREQ_HOPPING
-#include <mt_freqhopping_drv.h>
+#include <mtk_freqhopping_drv.h>
 #else
 #define FH_PLL0 0 /* LL : ARMPLL */
 #define FH_PLL1 1 /* L : ARMPLL_L */
@@ -18,8 +18,6 @@
 #include "mtk_cpufreq_platform.h"
 #include "../../mtk_cpufreq_hybrid.h"
 #include "mtk_devinfo.h"
-#include "mtk_cpufreq_config.h"
-#include <linux/of_platform.h>
 
 static struct regulator *regulator_proc1;
 static struct regulator *regulator_proc2;
@@ -29,7 +27,7 @@ static struct regulator *regulator_sram2;
 static unsigned long apmixed_base	= 0x1000c000;
 static unsigned long mcucfg_base	= 0x0c530000;
 
-#define APMIXED_NODE		"mediatek,mt6779-apmixed"
+#define APMIXED_NODE		"mediatek,apmixed"
 #define MCUCFG_NODE		"mediatek,mcucfg"
 
 #define ARMPLL_LL_CON1		(apmixed_base + 0x204)	/* ARMPLL1 */
@@ -40,10 +38,17 @@ static unsigned long mcucfg_base	= 0x0c530000;
 #define CKDIV1_L_CFG		(mcucfg_base + 0xa2a4)	/* MP1_PLL_DIVIDER */
 #define CKDIV1_CCI_CFG		(mcucfg_base + 0xa2e0)	/* BUS_PLL_DIVIDER */
 
-#define CPU_DOWN_PREPARE        0x0005 /* CPU (unsigned)v going down */
-#define CPU_TASKS_FROZEN        0x0010
+#define MPMM_EN                 (mcucfg_base + 0xcd10)
+#define mcucfg                  0x0c530000
 
-#define DEBUG_INFO 0
+#ifdef IMAX_ENABLE
+static unsigned int imax_reg_addr[REG_LEN] = {
+	0xcd10,
+	0xce0c,
+	0xce10,
+	0xce14,
+};
+#endif
 
 struct cpudvfs_doe dvfs_doe = {
 		.doe_flag = 0,
@@ -155,7 +160,7 @@ static int set_cur_volt_sram_cpu(struct buck_ctrl_t *buck_p,
 	unsigned int volt)
 {
 /* HW auto-tracking */
-#if DEBUG_INFO
+#if 0
 	unsigned int max_volt = MAX_VSRAM_VOLT + 625;
 
 	if (buck_p->buck_id == CPU_DVFS_VSRAM2)
@@ -450,7 +455,7 @@ unsigned int get_cur_phy_freq(struct pll_ctrl_t *pll_p)
 	ckdiv1 = cpufreq_read(pll_p->armpll_div_addr);
 	ckdiv1 = _GET_BITS_VAL_(21:17, ckdiv1);
 	cur_khz = _cpu_freq_calc(con1, ckdiv1);
-#if DEBUG_INFO
+#if 0
 	cpufreq_ver
 	("@%s: (%s) = cur_khz = %u, con1[0x%p] = 0x%x, ckdiv1_val = 0x%x\n",
 	__func__, pll_p->name, cur_khz, pll_p->armpll_addr, con1, ckdiv1);
@@ -526,21 +531,7 @@ struct pll_ctrl_t pll_ctrl[NR_MT_PLL] = {
 };
 
 /* Always put action cpu at last */
-struct hp_action_tbl cpu_dvfs_hp_action[4] = {
-	{
-		.action		= CPUFREQ_CPU_DOWN_PREPARE,
-		.cluster	= MT_CPU_DVFS_LL,
-		.trigged_core	= 1,
-		.hp_action_cfg[MT_CPU_DVFS_LL].action_id = FREQ_LOW,
-	},
-
-	{
-		.action		= CPUFREQ_CPU_DOWN_PREPARE,
-		.cluster	= MT_CPU_DVFS_L,
-		.trigged_core	= 1,
-		.hp_action_cfg[MT_CPU_DVFS_L].action_id = FREQ_LOW,
-	},
-
+struct hp_action_tbl cpu_dvfs_hp_action[] = {
 	{
 		.action		= CPUFREQ_CPU_DOWN_PREPARE,
 		.cluster	= MT_CPU_DVFS_LL,
@@ -610,6 +601,7 @@ int mt_cpufreq_dts_map(void)
 		return -ENODEV;
 
 	mcucfg_base = (unsigned long)of_iomap(node, 0);
+
 	if (GEN_DB_ON(!mcucfg_base, "MCUCFG Map Failed"))
 		return -ENOMEM;
 
@@ -618,60 +610,27 @@ int mt_cpufreq_dts_map(void)
 
 unsigned int _mt_cpufreq_get_cpu_level(void)
 {
-	unsigned int lv = CPU_LEVEL_0;
-	int val = 0;
+	unsigned int lv = CPU_LEVEL_1;
+	int val = (get_devinfo_with_index(7) & 0xFF);
+	int efuse_ver = (get_devinfo_with_index(4));
 
-	unsigned int efuse_seg;
-	struct platform_device *pdev;
-	struct device_node *node;
-	struct nvmem_cell *efuse_cell;
-	size_t efuse_len;
-	unsigned int *efuse_buf;
-
-
-	node = of_find_compatible_node(NULL, NULL, "mediatek,sspm-dvfsp");
-
-	if (!node) {
-		tag_pr_info("%s fail to get device node\n", __func__);
-		return 0;
-	}
-	pdev = of_device_alloc(node, NULL, NULL);
-	if (pdev == NULL) {
-		lv = 0;
-		tag_pr_info("%s alloc device node failed. cpu_lvl 0\n", __func__);
-		goto get_level_end;
-	}
-
-	efuse_cell = nvmem_cell_get(&pdev->dev, "efuse_segment_cell");
-	if (IS_ERR(efuse_cell)) {
-		tag_pr_info("@%s: cannot get efuse_cell, errno %ld\n",
-			__func__, PTR_ERR(efuse_cell));
-		lv = 0;
-		goto get_level_end;
-	}
-
-	efuse_buf = (unsigned int *)nvmem_cell_read(efuse_cell, &efuse_len);
-	nvmem_cell_put(efuse_cell);
-	efuse_seg = *efuse_buf;
-	kfree(efuse_buf);
-	val = efuse_seg;
-
-	if ((val == 0x09) || (val == 0x90) || (val == 0x08) || (val == 0x10)
-	|| (val == 0x06) || (val == 0x60) || (val == 0x04) || (val == 0x20))
+	if ((val == 0xA0) || (val == 0x05) || (val == 0x60) || (val == 0x06))
+		lv = CPU_LEVEL_1;
+	else if ((val == 0xC0) || (val == 0x03) || (val == 0x20)
+		|| (val == 0x04))
 		lv = CPU_LEVEL_0;
-	else if ((val == 0x07) || (val == 0xE0) || (val == 50) || (val == 0x0A))
-		lv = CPU_LEVEL_3;
+
+	else if ((val == 0x80) || (val == 0x01) || (val == 0x40)
+		|| (val == 0x02))
+		lv = CPU_LEVEL_2;
 
 	turbo_flag = 0;
 
+	if (efuse_ver == 0x5200)
+		lv = CPU_LEVEL_0;
+
 	tag_pr_info("%d, %d, (%d, %d) efuse_val = 0x%x\n",
 		lv, turbo_flag, UP_SRATE, DOWN_SRATE, val);
-
-get_level_end:
-	if (pdev != NULL) {
-		of_platform_device_destroy(&pdev->dev, NULL);
-		of_dev_put(pdev);
-	}
 	return lv;
 }
 
@@ -693,7 +652,7 @@ void cpufreq_get_cluster_cpus(struct cpumask *cpu_mask, unsigned int cid)
 	}
 
 	cpufreq_ver("cluster%d: cpumask = %*pbl\n",
-		    cid, cpumask_pr_args(cpu_mask));
+		cid, cpumask_pr_args(cpu_mask));
 }
 
 unsigned int cpufreq_get_cluster_id(unsigned int cpu_id)
@@ -705,7 +664,7 @@ unsigned int cpufreq_get_cluster_id(unsigned int cpu_id)
 		cpufreq_get_cluster_cpus(&cpu_mask, i);
 		if (cpumask_test_cpu(cpu_id, &cpu_mask)) {
 			cpufreq_ver("cluster%d: cpumask = %*pbl\n",
-				    i, cpumask_pr_args(&cpu_mask));
+			i, cpumask_pr_args(&cpu_mask));
 			return i;
 		}
 	}
@@ -713,3 +672,12 @@ unsigned int cpufreq_get_cluster_id(unsigned int cpu_id)
 	return 0;
 }
 
+#ifdef IMAX_ENABLE
+void cpufreq_get_imax_reg(unsigned int *imax_addr, unsigned int *reg_val)
+{
+	int i;
+
+	for (i = 0; i < REG_LEN; i++)
+		reg_val[i] = cpufreq_read(mcucfg_base + imax_reg_addr[i]);
+}
+#endif

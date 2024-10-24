@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef __MTK_CPUFREQ_PLATFORM_H__
 #define __MTK_CPUFREQ_PLATFORM_H__
@@ -12,6 +12,7 @@
 
 #ifdef CONFIG_MTK_TINYSYS_MCUPM_SUPPORT
 #define CONFIG_HYBRID_CPU_DVFS	1
+#define READ_SRAM_VOLT          1
 #define PPM_AP_SIDE	1
 #define EEM_AP_SIDE	1
 #define CCI_MAP_TBL_SUPPORT	1
@@ -19,20 +20,13 @@
 #define MET_READY              1
 /* #define IMAX_ENABLE             1 */
 #define IMAX_INIT_STATE         1
-#ifndef CONFIG_FPGA_EARLY_PORTING
-#else
-#define CPU_DVFS_NOT_READY	1
-#endif
+//#define CPU_DVFS_NOT_READY	1
 #define REPORT_IDLE_FREQ	1
 #define ENABLE_CLUSTER_ONOFF_SRAM	1
 #else
 /* #define SUPPORT_VOLT_HW_AUTO_TRACK 1 */
-#ifndef CONFIG_FPGA_EARLY_PORTING
-#else
-#define CPU_DVFS_NOT_READY	1
+//#define CPU_DVFS_NOT_READY	1
 #endif
-#endif
-#define INIT_MCUPM_VOLTAGE_SETTING  1
 #define NR_FREQ		16
 #define NR_CCI_TBL		2
 
@@ -45,10 +39,10 @@
 /* buck ctrl configs */
 #define NORMAL_DIFF_VRSAM_VPROC		10000
 #define MAX_DIFF_VSRAM_VPROC		25000
-#define MIN_VSRAM_VOLT			85000
-#define MAX_VSRAM_VOLT			112000
+#define MIN_VSRAM_VOLT			75000
+#define MAX_VSRAM_VOLT			100000
 #define MIN_VPROC_VOLT			60000
-#define MAX_VPROC_VOLT			112000
+#define MAX_VPROC_VOLT			100000
 
 #define UP_SRATE	1250
 #define DOWN_SRATE	500
@@ -58,7 +52,7 @@
 #define PLL_SETTLE_TIME		20
 #define POS_SETTLE_TIME		1
 
-#define DVFSP_DT_NODE		"mediatek,mt6885-dvfsp"
+#define DVFSP_DT_NODE		"mediatek,mt6873-dvfsp"
 
 #define CSRAM_BASE		0x0011bc00
 #define CSRAM_SIZE		0x1400		/* 5K bytes */
