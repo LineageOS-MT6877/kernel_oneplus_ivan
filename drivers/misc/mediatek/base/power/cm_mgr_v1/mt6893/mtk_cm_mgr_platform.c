@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 /* system includes */
 #include <linux/kernel.h>
@@ -43,6 +43,7 @@
 #include <linux/of_address.h>
 #include <mtk_cm_mgr.h>
 
+
 #define CREATE_TRACE_POINTS
 #include "mtk_cm_mgr_platform_events.h"
 
@@ -50,6 +51,7 @@
 #include <linux/notifier.h>
 
 #include <linux/pm_qos.h>
+#include <linux/soc/mediatek/mtk-pm-qos.h>
 #include <helio-dvfsrc.h>
 #ifdef USE_IDLE_NOTIFY
 #include "mtk_idle.h"
@@ -66,7 +68,6 @@ static void cm_mgr_process(struct work_struct *work);
 int __weak get_cur_vcore_opp(void) { return 0; };
 int __weak get_cur_ddr_opp(void) { return 0; };
 void __weak dvfsrc_set_power_model_ddr_request(unsigned int level) {};
-
 static int cm_mgr_vcore_opp_to_bw_0[CM_MGR_VCORE_OPP_COUNT] = {
 	540,
 	460,
@@ -85,10 +86,11 @@ static int cm_mgr_vcore_opp_to_bw_0[CM_MGR_VCORE_OPP_COUNT] = {
 	340,
 	340, /* 15 */
 	340,
-	230,
+	340,
 	230,
 	230,
 	230, /* 20 */
+	230,
 };
 
 #define VCORE_OPP_BW_PTR(name) \
@@ -558,6 +560,8 @@ int debounce_times_perf_down_force_local = -1;
 int pm_qos_update_request_status;
 int cm_mgr_dram_opp_base = -1;
 int cm_mgr_dram_opp = -1;
+int cm_mgr_dram_perf_opp = 2;
+int cm_mgr_dram_step_opp = 2;
 
 static int cm_mgr_fb_notifier_callback(struct notifier_block *self,
 		unsigned long event, void *data)
@@ -661,11 +665,13 @@ static struct delayed_work cm_mgr_timeout_work;
 
 static void cm_mgr_timeout_process(struct work_struct *work)
 {
+	/* timeout set normal mode */
+	mt_cpufreq_update_cci_mode(0, 2);
 	mtk_pm_qos_update_request(&ddr_opp_req,
 			MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE);
 }
 
-static void cm_mgr_perf_timeout_timer_fn(struct timer_list *data)
+static void cm_mgr_perf_timeout_timer_fn(struct timer_list *unused)
 {
 	if (pm_qos_update_request_status) {
 		cm_mgr_dram_opp = cm_mgr_dram_opp_base = -1;
@@ -682,17 +688,21 @@ static void cm_mgr_perf_timeout_timer_fn(struct timer_list *data)
 	}
 }
 
-#define PERF_TIME 3000
+#define PERF_TIME 100
+
 
 static ktime_t perf_now;
 void cm_mgr_perf_platform_set_status(int enable)
 {
 	unsigned long expires;
 
-	if (pm_qos_update_request_status) {
+	if (enable || pm_qos_update_request_status) {
 		expires = jiffies + CM_MGR_PERF_TIMEOUT_MS;
 		mod_timer(&cm_mgr_perf_timeout_timer, expires);
 	}
+
+	/* set dsu mode */
+	mt_cpufreq_update_cci_mode(enable, 2);
 
 	if (enable) {
 		if (cm_mgr_perf_enable == 0)
@@ -736,9 +746,14 @@ void cm_mgr_perf_platform_set_status(int enable)
 
 		if ((cm_mgr_dram_opp < cm_mgr_dram_opp_base) &&
 				(debounce_times_perf_down > 0)) {
+
+
 			cm_mgr_dram_opp = cm_mgr_dram_opp_base *
 				debounce_times_perf_down_local /
 				debounce_times_perf_down;
+			if ((cm_mgr_dram_perf_opp >= 0) &&
+				(cm_mgr_dram_opp < cm_mgr_dram_step_opp))
+				cm_mgr_dram_opp = cm_mgr_dram_step_opp;
 			mtk_pm_qos_update_request(&ddr_opp_req,
 					cm_mgr_dram_opp);
 		} else {
@@ -762,10 +777,13 @@ void cm_mgr_perf_platform_set_force_status(int enable)
 {
 	unsigned long expires;
 
-	if (pm_qos_update_request_status) {
+	if (enable || pm_qos_update_request_status) {
 		expires = jiffies + CM_MGR_PERF_TIMEOUT_MS;
 		mod_timer(&cm_mgr_perf_timeout_timer, expires);
 	}
+
+	/* set dsu mode */
+	mt_cpufreq_update_cci_mode(enable, 2);
 
 	if (enable) {
 		if (cm_mgr_perf_enable == 0)
@@ -906,15 +924,7 @@ int cm_mgr_platform_init(void)
 #ifdef USE_IDLE_NOTIFY
 	mtk_idle_notifier_register(&cm_mgr_idle_notify);
 #endif /* USE_IDLE_NOTIFY */
-/*
-	init_timer_deferrable(&cm_mgr_ratio_timer);
-	cm_mgr_ratio_timer.function = cm_mgr_ratio_timer_fn;
-	cm_mgr_ratio_timer.data = 0;
 
-	init_timer_deferrable(&cm_mgr_perf_timeout_timer);
-	cm_mgr_perf_timeout_timer.function = cm_mgr_perf_timeout_timer_fn;
-	cm_mgr_perf_timeout_timer.data = 0;
-*/
 	timer_setup(&cm_mgr_ratio_timer, cm_mgr_ratio_timer_fn, 0);
 	timer_setup(&cm_mgr_perf_timeout_timer, cm_mgr_perf_timeout_timer_fn, 0);
 
@@ -938,23 +948,13 @@ int cm_mgr_platform_init(void)
 	return r;
 }
 
-#if 0
-/* no 800 */
-int phy_to_virt_dram_opp[] = {
-	0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x5
-};
-int virt_to_phy_dram_level[] = {
-	0x1, 0x2, 0x3, 0x4, 0x5, 0x6
-};
-#else
 /* no 1200 */
 int phy_to_virt_dram_opp[] = {
-	0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x5
+	0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x6
 };
 int virt_to_phy_dram_level[] = {
-	0x0, 0x2, 0x3, 0x4, 0x5, 0x6
+	0x0, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7
 };
-#endif
 
 void cm_mgr_set_dram_level(int level)
 {
@@ -994,22 +994,22 @@ int cm_mgr_get_bw(void)
 #ifdef USE_CPU_TO_DRAM_MAP
 int cm_mgr_cpu_opp_to_dram[CM_MGR_CPU_OPP_SIZE] = {
 /* start from cpu opp 0 */
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
+	DDR_OPP_0,
 	DDR_OPP_1,
 	DDR_OPP_1,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
+	DDR_OPP_1,
+	DDR_OPP_1,
+	DDR_OPP_1,
 };
 
 static void cm_mgr_process(struct work_struct *work)
@@ -1036,8 +1036,10 @@ void cm_mgr_update_dram_by_cpu_opp(int cpu_opp)
 	if ((cpu_opp >= 0) && (cpu_opp < CM_MGR_CPU_OPP_SIZE))
 		dram_opp = cm_mgr_cpu_opp_to_dram[cpu_opp];
 
+
 	if (cm_mgr_cpu_to_dram_opp == dram_opp)
 		return;
+
 
 	cm_mgr_cpu_to_dram_opp = dram_opp;
 
@@ -1061,3 +1063,87 @@ void cm_mgr_setup_cpu_dvfs_info(void)
 	}
 #endif /* CONFIG_MTK_TINYSYS_SSPM_SUPPORT */
 }
+
+void dbg_cm_mgr_platform_show(struct seq_file *m)
+{
+	int i;
+
+	seq_printf(m, "cm_mgr_camera_enable %d\n", cm_mgr_camera_enable);
+	seq_printf(m, "x_ratio_enable %d\n", x_ratio_enable);
+
+	seq_puts(m, "cpu_power_ratio_up_x_camera");
+	for (i = 0; i < CM_MGR_EMI_OPP; i++)
+		seq_printf(m, " %d", cpu_power_ratio_up_x_camera[i]);
+	seq_puts(m, "\n");
+
+	seq_puts(m, "cpu_power_ratio_up_x");
+	for (i = 0; i < CM_MGR_EMI_OPP; i++)
+		seq_printf(m, " %d", cpu_power_ratio_up_x[i]);
+	seq_puts(m, "\n");
+}
+
+void dbg_cm_mgr_platform_write(int len, const char *cmd, u32 val_1, u32 val_2)
+{
+	unsigned int i;
+
+	if (!strcmp(cmd, "x_ratio_enable")) {
+		x_ratio_enable = val_1;
+		if (!x_ratio_enable) {
+			for (i = 0; i <  CM_MGR_EMI_OPP; i++) {
+				/* restore common setting */
+				cpu_power_ratio_up_x[i] = 0;
+#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
+				cm_mgr_to_sspm_command(
+					IPI_CM_MGR_CPU_POWER_RATIO_UP,
+					i << 16 | cpu_power_ratio_up[i]);
+#endif /* CONFIG_MTK_TINYSYS_SSPM_SUPPORT */
+			}
+		}
+	} else if (!strcmp(cmd, "cm_mgr_camera_enable") && x_ratio_enable) {
+		if (cm_mgr_camera_enable == val_1)
+			return;
+		if (val_1) {
+			for (i = 0; i <  CM_MGR_EMI_OPP; i++) {
+				if (cpu_power_ratio_up_x[i] ==
+					cpu_power_ratio_up_x_camera[i])
+					continue;
+				cpu_power_ratio_up_x[i] =
+					cpu_power_ratio_up_x_camera[i];
+
+#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
+				if (cpu_power_ratio_up_x[i])
+					cm_mgr_to_sspm_command(
+					IPI_CM_MGR_CPU_POWER_RATIO_UP,
+					i << 16 | cpu_power_ratio_up_x[i]);
+				else
+					cm_mgr_to_sspm_command(
+					IPI_CM_MGR_CPU_POWER_RATIO_UP,
+					i << 16 | cpu_power_ratio_up[i]);
+#endif /* CONFIG_MTK_TINYSYS_SSPM_SUPPORT */
+			}
+		} else {
+			for (i = 0; i <  CM_MGR_EMI_OPP; i++) {
+				if (!cpu_power_ratio_up_x[i])
+					continue;
+				cpu_power_ratio_up_x[i] = 0;
+#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
+				cm_mgr_to_sspm_command(
+					IPI_CM_MGR_CPU_POWER_RATIO_UP,
+					i << 16 | cpu_power_ratio_up[i]);
+#endif /* CONFIG_MTK_TINYSYS_SSPM_SUPPORT */
+			}
+		}
+		cm_mgr_camera_enable = val_1;
+	} else if (!strcmp(cmd, "cpu_power_ratio_up_x")) {
+		if (len == 3 && val_1 < CM_MGR_EMI_OPP && x_ratio_enable) {
+			cpu_power_ratio_up_x[val_1] = val_2;
+			if (!val_2)
+				val_2 = cpu_power_ratio_up[val_1];
+#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
+			cm_mgr_to_sspm_command(IPI_CM_MGR_CPU_POWER_RATIO_UP,
+				val_1 << 16 | val_2);
+#endif /* CONFIG_MTK_TINYSYS_SSPM_SUPPORT */
+		}
+	}
+}
+

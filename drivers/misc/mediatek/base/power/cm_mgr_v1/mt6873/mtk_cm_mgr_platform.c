@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 /* system includes */
 #include <linux/kernel.h>
@@ -62,10 +62,6 @@ static int cm_mgr_cpu_to_dram_opp;
 
 static void cm_mgr_process(struct work_struct *work);
 #endif /* USE_CPU_TO_DRAM_MAP */
-
-int __weak get_cur_vcore_opp(void) { return 0; };
-int __weak get_cur_ddr_opp(void) { return 0; };
-void __weak dvfsrc_set_power_model_ddr_request(unsigned int level) {};
 
 static int cm_mgr_vcore_opp_to_bw_0[CM_MGR_VCORE_OPP_COUNT] = {
 	540,
@@ -665,7 +661,7 @@ static void cm_mgr_timeout_process(struct work_struct *work)
 			MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE);
 }
 
-static void cm_mgr_perf_timeout_timer_fn(struct timer_list *data)
+static void cm_mgr_perf_timeout_timer_fn(struct timer_list *unused)
 {
 	if (pm_qos_update_request_status) {
 		cm_mgr_dram_opp = cm_mgr_dram_opp_base = -1;
@@ -867,10 +863,6 @@ static void cm_mgr_add_cpu_opp_to_ddr_req(void)
 
 	strncpy(ddr_opp_req_by_cpu_opp.owner,
 			owner, sizeof(ddr_opp_req_by_cpu_opp.owner) - 1);
-
-#ifdef USE_CPU_TO_DRAM_MAP_NEW
-	cm_mgr_cpu_map_update_table();
-#endif /* USE_CPU_TO_DRAM_MAP_NEW */
 }
 #endif /* USE_CPU_TO_DRAM_MAP */
 
@@ -917,7 +909,6 @@ int cm_mgr_platform_init(void)
 */
 	timer_setup(&cm_mgr_ratio_timer, cm_mgr_ratio_timer_fn, 0);
 	timer_setup(&cm_mgr_perf_timeout_timer, cm_mgr_perf_timeout_timer_fn, 0);
-
 	INIT_DELAYED_WORK(&cm_mgr_timeout_work, cm_mgr_timeout_process);
 
 #ifdef CONFIG_MTK_CPU_FREQ
@@ -992,24 +983,24 @@ int cm_mgr_get_bw(void)
 }
 
 #ifdef USE_CPU_TO_DRAM_MAP
-int cm_mgr_cpu_opp_to_dram[CM_MGR_CPU_OPP_SIZE] = {
+static int cm_mgr_cpu_opp_to_dram[CM_MGR_CPU_OPP_SIZE] = {
 /* start from cpu opp 0 */
-	DDR_OPP_1,
-	DDR_OPP_1,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
+	0,
+	0,
+	0,
+	0,
+	1,
+	1,
+	1,
+	1,
+	1,
+	2,
+	2,
+	2,
+	2,
+	2,
+	2,
+	2,
 };
 
 static void cm_mgr_process(struct work_struct *work)
@@ -1026,8 +1017,8 @@ void cm_mgr_update_dram_by_cpu_opp(int cpu_opp)
 		return;
 
 	if (!cm_mgr_cpu_map_dram_enable) {
-		if (cm_mgr_cpu_to_dram_opp != MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE) {
-			cm_mgr_cpu_to_dram_opp = MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE;
+		if (cm_mgr_cpu_to_dram_opp != PM_QOS_DDR_OPP_DEFAULT_VALUE) {
+			cm_mgr_cpu_to_dram_opp = PM_QOS_DDR_OPP_DEFAULT_VALUE;
 			ret = schedule_delayed_work(&cm_mgr_work, 1);
 		}
 		return;

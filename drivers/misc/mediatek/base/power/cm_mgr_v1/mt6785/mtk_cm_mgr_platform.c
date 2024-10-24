@@ -63,32 +63,20 @@ static int cm_mgr_cpu_to_dram_opp;
 static void cm_mgr_process(struct work_struct *work);
 #endif /* USE_CPU_TO_DRAM_MAP */
 
-int __weak get_cur_vcore_opp(void) { return 0; };
-int __weak get_cur_ddr_opp(void) { return 0; };
-void __weak dvfsrc_set_power_model_ddr_request(unsigned int level) {};
-
 static int cm_mgr_vcore_opp_to_bw_0[CM_MGR_VCORE_OPP_COUNT] = {
 	540,
 	460,
+	340,
+	460,
+	340,
+	460,
+	340,
 	460,
 	340,
 	340,
-	340, /* 5 */
-	340,
-	340,
-	340,
-	340,
-	340, /* 10 */
-	340,
-	340,
-	340,
-	340,
-	340, /* 15 */
-	340,
 	230,
-	230,
-	230,
-	230, /* 20 */
+	340,
+	230
 };
 
 #define VCORE_OPP_BW_PTR(name) \
@@ -300,9 +288,9 @@ void debug_stall_all(void)
 
 static int cm_mgr_check_dram_type(void)
 {
-#ifdef CONFIG_MEDIATEK_DRAMC
-	int ddr_type = mtk_dramc_get_ddr_type();
-	int ddr_hz = mtk_dramc_get_steps_freq(0);
+#ifdef CONFIG_MTK_DRAMC
+	int ddr_type = get_ddr_type();
+	int ddr_hz = dram_steps_freq(0);
 
 	if (ddr_type == TYPE_LPDDR4X || ddr_type == TYPE_LPDDR4)
 		cm_mgr_idx = CM_MGR_LP4;
@@ -310,9 +298,9 @@ static int cm_mgr_check_dram_type(void)
 			__func__, __LINE__, ddr_type, ddr_hz, cm_mgr_idx);
 #else
 	cm_mgr_idx = 0;
-	pr_info("#@# %s(%d) NO CONFIG_MEDIATEK_DRAMC !!! set cm_mgr_idx to 0x%x\n",
+	pr_info("#@# %s(%d) NO CONFIG_MTK_DRAMC !!! set cm_mgr_idx to 0x%x\n",
 			__func__, __LINE__, cm_mgr_idx);
-#endif /* CONFIG_MEDIATEK_DRAMC */
+#endif /* CONFIG_MTK_DRAMC */
 
 #if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
 	if (cm_mgr_idx >= 0)
@@ -459,7 +447,6 @@ int cm_mgr_check_stall_ratio(int mp0, int mp1)
 	return 0;
 }
 
-#if !defined(USE_CM_MGR_AT_SSPM)
 static void init_cpu_stall_counter(int cluster)
 {
 	unsigned int val;
@@ -551,13 +538,12 @@ static void cm_mgr_sched_pm_init(void)
 #else
 static inline void cm_mgr_sched_pm_init(void) { }
 #endif /* CONFIG_CPU_PM */
-#endif /* !USE_CM_MGR_AT_SSPM */
 
-int debounce_times_perf_down_local = -1;
-int debounce_times_perf_down_force_local = -1;
-int pm_qos_update_request_status;
-int cm_mgr_dram_opp_base = -1;
-int cm_mgr_dram_opp = -1;
+static int debounce_times_perf_down_local = -1;
+static int debounce_times_perf_down_force_local = -1;
+static int pm_qos_update_request_status;
+static int cm_mgr_dram_opp_base = -1;
+static int cm_mgr_dram_opp = -1;
 
 static int cm_mgr_fb_notifier_callback(struct notifier_block *self,
 		unsigned long event, void *data)
@@ -654,46 +640,12 @@ void cm_mgr_ratio_timer_en(int enable)
 	}
 }
 
-static struct mtk_pm_qos_request ddr_opp_req;
-struct timer_list cm_mgr_perf_timeout_timer;
-static struct delayed_work cm_mgr_timeout_work;
-#define CM_MGR_PERF_TIMEOUT_MS	msecs_to_jiffies(100)
-
-static void cm_mgr_timeout_process(struct work_struct *work)
-{
-	mtk_pm_qos_update_request(&ddr_opp_req,
-			MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE);
-}
-
-static void cm_mgr_perf_timeout_timer_fn(struct timer_list *data)
-{
-	if (pm_qos_update_request_status) {
-		cm_mgr_dram_opp = cm_mgr_dram_opp_base = -1;
-		schedule_delayed_work(&cm_mgr_timeout_work, 1);
-
-		pm_qos_update_request_status = 0;
-		debounce_times_perf_down_local = -1;
-		debounce_times_perf_down_force_local = -1;
-
-		trace_CM_MGR__perf_hint(2, 0,
-				cm_mgr_dram_opp, cm_mgr_dram_opp_base,
-				debounce_times_perf_down_local,
-				debounce_times_perf_down_force_local);
-	}
-}
-
 #define PERF_TIME 3000
 
+static struct mtk_pm_qos_request ddr_opp_req;
 static ktime_t perf_now;
 void cm_mgr_perf_platform_set_status(int enable)
 {
-	unsigned long expires;
-
-	if (pm_qos_update_request_status) {
-		expires = jiffies + CM_MGR_PERF_TIMEOUT_MS;
-		mod_timer(&cm_mgr_perf_timeout_timer, expires);
-	}
-
 	if (enable) {
 		if (cm_mgr_perf_enable == 0)
 			return;
@@ -722,20 +674,13 @@ void cm_mgr_perf_platform_set_status(int enable)
 
 		if (++debounce_times_perf_down_local <
 				debounce_times_perf_down) {
-			if (cm_mgr_dram_opp_base < 0) {
-				mtk_pm_qos_update_request(&ddr_opp_req,
-						MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE);
-				pm_qos_update_request_status = enable;
-				debounce_times_perf_down_local = -1;
-				goto trace;
-			}
 			if (ktime_ms_delta(ktime_get(), perf_now) < PERF_TIME)
-				goto trace;
-			cm_mgr_dram_opp_base = -1;
+				return;
+			else
+				cm_mgr_dram_opp_base = -1;
 		}
 
-		if ((cm_mgr_dram_opp < cm_mgr_dram_opp_base) &&
-				(debounce_times_perf_down > 0)) {
+		if (cm_mgr_dram_opp < cm_mgr_dram_opp_base) {
 			cm_mgr_dram_opp = cm_mgr_dram_opp_base *
 				debounce_times_perf_down_local /
 				debounce_times_perf_down;
@@ -750,23 +695,10 @@ void cm_mgr_perf_platform_set_status(int enable)
 			debounce_times_perf_down_local = -1;
 		}
 	}
-
-trace:
-	trace_CM_MGR__perf_hint(0, enable,
-			cm_mgr_dram_opp, cm_mgr_dram_opp_base,
-			debounce_times_perf_down_local,
-			debounce_times_perf_down_force_local);
 }
 
 void cm_mgr_perf_platform_set_force_status(int enable)
 {
-	unsigned long expires;
-
-	if (pm_qos_update_request_status) {
-		expires = jiffies + CM_MGR_PERF_TIMEOUT_MS;
-		mod_timer(&cm_mgr_perf_timeout_timer, expires);
-	}
-
 	if (enable) {
 		if (cm_mgr_perf_enable == 0)
 			return;
@@ -801,8 +733,7 @@ void cm_mgr_perf_platform_set_force_status(int enable)
 				(++debounce_times_perf_down_force_local >=
 				 debounce_times_perf_force_down)) {
 
-			if ((cm_mgr_dram_opp < cm_mgr_dram_opp_base) &&
-					(debounce_times_perf_down > 0)) {
+			if (cm_mgr_dram_opp < cm_mgr_dram_opp_base) {
 				cm_mgr_dram_opp = cm_mgr_dram_opp_base *
 					debounce_times_perf_down_force_local /
 					debounce_times_perf_force_down;
@@ -818,16 +749,11 @@ void cm_mgr_perf_platform_set_force_status(int enable)
 			}
 		}
 	}
-
-	trace_CM_MGR__perf_hint(1, enable,
-			cm_mgr_dram_opp, cm_mgr_dram_opp_base,
-			debounce_times_perf_down_local,
-			debounce_times_perf_down_force_local);
 }
 
 int cm_mgr_register_init(void)
 {
-	struct device_node *node, *np;
+	struct device_node *node;
 	int ret;
 	const char *buf;
 
@@ -835,8 +761,7 @@ int cm_mgr_register_init(void)
 			"mediatek,mcucfg_mp0_counter");
 	if (!node)
 		pr_info("find mcucfg_mp0_counter node failed\n");
-	np = of_parse_phandle(node, "reg_mp0_counter_base", 0);
-	mcucfg_mp0_counter_base = of_iomap(np, 0);
+	mcucfg_mp0_counter_base = of_iomap(node, 0);
 	if (!mcucfg_mp0_counter_base) {
 		pr_info("base mcucfg_mp0_counter_base failed\n");
 		return -1;
@@ -860,17 +785,8 @@ int cm_mgr_register_init(void)
 #ifdef USE_CPU_TO_DRAM_MAP
 static void cm_mgr_add_cpu_opp_to_ddr_req(void)
 {
-	char owner[20] = "cm_mgr_cpu_to_dram";
-
 	mtk_pm_qos_add_request(&ddr_opp_req_by_cpu_opp, MTK_PM_QOS_DDR_OPP,
 			MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE);
-
-	strncpy(ddr_opp_req_by_cpu_opp.owner,
-			owner, sizeof(ddr_opp_req_by_cpu_opp.owner) - 1);
-
-#ifdef USE_CPU_TO_DRAM_MAP_NEW
-	cm_mgr_cpu_map_update_table();
-#endif /* USE_CPU_TO_DRAM_MAP_NEW */
 }
 #endif /* USE_CPU_TO_DRAM_MAP */
 
@@ -886,9 +802,7 @@ int cm_mgr_platform_init(void)
 		return r;
 	}
 
-#if !defined(USE_CM_MGR_AT_SSPM)
 	cm_mgr_sched_pm_init();
-#endif /* !USE_CM_MGR_AT_SSPM */
 
 	r = fb_register_client(&cm_mgr_fb_notifier);
 	if (r) {
@@ -896,29 +810,17 @@ int cm_mgr_platform_init(void)
 		return r;
 	}
 
-#if !defined(USE_CM_MGR_AT_SSPM)
 	cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN,
 			"cm_mgr:online",
 			cm_mgr_cpuhp_online,
 			cm_mgr_cpuhp_offline);
-#endif /* !USE_CM_MGR_AT_SSPM */
 
 #ifdef USE_IDLE_NOTIFY
 	mtk_idle_notifier_register(&cm_mgr_idle_notify);
 #endif /* USE_IDLE_NOTIFY */
-/*
-	init_timer_deferrable(&cm_mgr_ratio_timer);
-	cm_mgr_ratio_timer.function = cm_mgr_ratio_timer_fn;
-	cm_mgr_ratio_timer.data = 0;
 
-	init_timer_deferrable(&cm_mgr_perf_timeout_timer);
-	cm_mgr_perf_timeout_timer.function = cm_mgr_perf_timeout_timer_fn;
-	cm_mgr_perf_timeout_timer.data = 0;
-*/
 	timer_setup(&cm_mgr_ratio_timer, cm_mgr_ratio_timer_fn, 0);
-	timer_setup(&cm_mgr_perf_timeout_timer, cm_mgr_perf_timeout_timer_fn, 0);
-
-	INIT_DELAYED_WORK(&cm_mgr_timeout_work, cm_mgr_timeout_process);
+	//timer_setup(&cm_mgr_perf_timeout_timer, cm_mgr_perf_timeout_timer_fn, 0);
 
 #ifdef CONFIG_MTK_CPU_FREQ
 	mt_cpufreq_set_governor_freq_registerCB(check_cm_mgr_status);
@@ -938,23 +840,13 @@ int cm_mgr_platform_init(void)
 	return r;
 }
 
-#if 0
-/* no 800 */
-int phy_to_virt_dram_opp[] = {
-	0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x5
-};
-int virt_to_phy_dram_level[] = {
-	0x1, 0x2, 0x3, 0x4, 0x5, 0x6
-};
-#else
 /* no 1200 */
 int phy_to_virt_dram_opp[] = {
-	0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x5
+	0x0, 0x1, 0x2, 0x3, 0x4, 0x4
 };
 int virt_to_phy_dram_level[] = {
-	0x0, 0x2, 0x3, 0x4, 0x5, 0x6
+	0x0, 0x2, 0x3, 0x4, 0x5
 };
-#endif
 
 void cm_mgr_set_dram_level(int level)
 {
@@ -992,24 +884,24 @@ int cm_mgr_get_bw(void)
 }
 
 #ifdef USE_CPU_TO_DRAM_MAP
-int cm_mgr_cpu_opp_to_dram[CM_MGR_CPU_OPP_SIZE] = {
+static int cm_mgr_cpu_opp_to_dram[CM_MGR_CPU_OPP_SIZE] = {
 /* start from cpu opp 0 */
-	DDR_OPP_1,
-	DDR_OPP_1,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
-	MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE,
+	0,
+	0,
+	0,
+	0,
+	1,
+	1,
+	1,
+	1,
+	1,
+	2,
+	2,
+	2,
+	2,
+	2,
+	2,
+	2,
 };
 
 static void cm_mgr_process(struct work_struct *work)
@@ -1025,14 +917,6 @@ void cm_mgr_update_dram_by_cpu_opp(int cpu_opp)
 	if (!is_dvfsrc_enabled())
 		return;
 
-	if (!cm_mgr_cpu_map_dram_enable) {
-		if (cm_mgr_cpu_to_dram_opp != MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE) {
-			cm_mgr_cpu_to_dram_opp = MTK_PM_QOS_DDR_OPP_DEFAULT_VALUE;
-			ret = schedule_delayed_work(&cm_mgr_work, 1);
-		}
-		return;
-	}
-
 	if ((cpu_opp >= 0) && (cpu_opp < CM_MGR_CPU_OPP_SIZE))
 		dram_opp = cm_mgr_cpu_opp_to_dram[cpu_opp];
 
@@ -1044,20 +928,3 @@ void cm_mgr_update_dram_by_cpu_opp(int cpu_opp)
 	ret = schedule_delayed_work(&cm_mgr_work, 1);
 }
 #endif /* USE_CPU_TO_DRAM_MAP */
-
-void cm_mgr_setup_cpu_dvfs_info(void)
-{
-#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT) && defined(USE_CM_MGR_AT_SSPM)
-	int i, j;
-	unsigned int val;
-
-	for (j = 0; j < CM_MGR_CPU_CLUSTER; j++) {
-		for (i = 0; i < CM_MGR_CPU_OPP_SIZE; i++) {
-			val = (j*16+i) << 24 | mt_cpufreq_get_freq_by_idx(j, i);
-			cm_mgr_to_sspm_command(IPI_CM_MGR_OPP_FREQ_SET, val);
-			val = (j*16+i) << 24 | mt_cpufreq_get_volt_by_idx(j, i);
-			cm_mgr_to_sspm_command(IPI_CM_MGR_OPP_VOLT_SET, val);
-		}
-	}
-#endif /* CONFIG_MTK_TINYSYS_SSPM_SUPPORT */
-}
