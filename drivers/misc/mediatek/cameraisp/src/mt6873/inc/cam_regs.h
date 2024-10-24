@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -309,9 +309,6 @@ enum{
 #define CAM_REG_CTL_SEL2(module)                (isp_devs[module].regs + 0x0044)
 #define CAM_REG_CTL_FMT_SEL(module)             (isp_devs[module].regs + 0x0048)
 #define CAM_REG_CTL_FMT2_SEL(module)            (isp_devs[module].regs + 0x004C)
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
-#define CAM_REG_CTL_FBC_GROUP(module)           (isp_devs[module].regs + 0x0060)
-#endif /*OPLUS_FEATURE_CAMERA_COMMON*/
 
 #define CAM_REG_CTL_START(module)               (isp_devs[module].regs + 0x0074)
 #define CAM_REG_CTL_START_ST(module)            (isp_devs[module].regs + 0x0078)
@@ -338,8 +335,6 @@ enum{
 #define CAM_REG_CTL_CD_DONE_SEL(module)         (isp_devs[module].regs + 0x0058)
 #define CAM_REG_CTL_TWIN_STATUS(module)         (isp_devs[module].regs + 0x00A8)
 #define CAM_REG_CTL_MISC(module)                (isp_devs[module].regs + 0x0054)
-#define CAM_REG_CTL_DONE_SEL(module)            (isp_devs[module].regs + 0x0058)
-#define CAM_REG_CTL_DONE_SEL2(module)           (isp_devs[module].regs + 0x005C)
 #define CAM_REG_CTL_SW_PASS1_DONE(module)       (isp_devs[module].regs + 0x0080)
 #define CAM_REG_CTL_SW_SUB_CTL(module)          (isp_devs[module].regs + 0x0084)
 
@@ -444,8 +439,6 @@ enum{
 #define CAM_REG_CQ_THR24_BASEADDR(module)       (isp_devs[module].regs + 0x0334)
 
 #define CAM_REG_TG_SEN_MODE(module)             (isp_devs[module].regs + 0x1F00)
-#define CAM_REG_TG_PATH_CFG(module)             (isp_devs[module].regs + 0x1F10)
-#define CAM_REG_TG_DCIF_CTL(module)             (isp_devs[module].regs + 0x1F68)
 #define CAM_REG_TG_VF_CON(module)               (isp_devs[module].regs + 0x1F04)
 #define CAM_REG_TG_INTER_ST(module)             (isp_devs[module].regs + 0x1F3C)
 #define CAM_REG_TG_SUB_PERIOD(module)           (isp_devs[module].regs + 0x1F74)
@@ -465,7 +458,6 @@ enum{
 #define CAM_REG_PDO_BASE_ADDR(module)          (isp_devs[module].regs + 0x4260)
 #define CAM_REG_FLKO_BASE_ADDR(module)         (isp_devs[module].regs + 0x4580)
 #define CAM_REG_LTMSO_BASE_ADDR(module)        (isp_devs[module].regs + 0x45F0)
-#define CAM_REG_TSFSO_BASE_ADDR(module)        (isp_devs[module].regs + 0x43C0)
 
 #define CAM_REG_IMGO_DRS(module)                (isp_devs[module].regs + 0x4828)
 #define CAM_REG_IMGO_CON(module)                (isp_devs[module].regs + 0x4838)
@@ -625,12 +617,6 @@ enum{
 #define CAM_REG_BPCI_R2_CON3(module)            (isp_devs[module].regs + 0x4320)
 #define CAM_REG_BPCI_R2_CON4(module)            (isp_devs[module].regs + 0x4328)
 
-#define CAM_REG_BPCI_R3_DRS(module)             (isp_devs[module].regs + 0x4338)
-#define CAM_REG_BPCI_R3_CON(module)             (isp_devs[module].regs + 0x4348)
-#define CAM_REG_BPCI_R3_CON2(module)            (isp_devs[module].regs + 0x434C)
-#define CAM_REG_BPCI_R3_CON3(module)            (isp_devs[module].regs + 0x4350)
-#define CAM_REG_BPCI_R3_CON4(module)            (isp_devs[module].regs + 0x4358)
-
 #define CAM_REG_LSCI_DRS(module)                (isp_devs[module].regs + 0x4398)
 #define CAM_REG_LSCI_CON(module)                (isp_devs[module].regs + 0x43A8)
 #define CAM_REG_LSCI_CON2(module)               (isp_devs[module].regs + 0x43AC)
@@ -658,7 +644,6 @@ enum{
 #define CAM_REG_BPCI_R3_ERR_STAT(module)        (isp_devs[module].regs + 0x4034)
 #define CAM_REG_UFDI_R2_ERR_STAT(module)        (isp_devs[module].regs + 0x4038)
 #define CAM_REG_LSCI_ERR_STAT(module)           (isp_devs[module].regs + 0x403C)
-#define CAM_REG_RAWI_R3_ERR_STAT(module)        (isp_devs[module].regs + 0x5020)
 
 #define CAM_REG_TSFSO_ERR_STAT(module)          (isp_devs[module].regs + 0x4040)
 #define CAM_REG_AAHO_ERR_STAT(module)           (isp_devs[module].regs + 0x4044)
@@ -710,13 +695,6 @@ enum{
 
 #define CAM_REG_FLKO_FH_FH_SPARE_9(module)      (isp_devs[module].regs + 0x45CC)
 #define CAM_REG_FLKO_FH_FH_SPARE_10(module)     (isp_devs[module].regs + 0x45D0)
-#define CAM_REG_DMA_SOFT_RSTSTAT1(module)       (isp_devs[module].regs + 0x4000)
-#define CAM_REG_DMA_SOFT_RESET1(module)         (isp_devs[module].regs + 0x4010)
-#define CAM_REG_DMA_ERR_CTRL1(module)           (isp_devs[module].regs + 0x401C)
-
-#define CAM_REG_DMA_MAGIC_NUM(module)           (isp_devs[module].regs + 0x40A4)
-
-
 /* MRAW */
 /* MRAW WDMA */
 #define CAM_REG_IMGO_M1_DRS(module)             LOG_NOTICE("MRAW TBD\n")
@@ -757,13 +735,11 @@ enum{
 #define CAMSV_REG_INT_EN(module)                (isp_devs[module].regs + 0x0018)
 #define CAMSV_REG_INT_STATUS(module)            (isp_devs[module].regs + 0x001C)
 #define CAMSV_REG_SW_CTL(module)                (isp_devs[module].regs + 0x0020)
-#define CAMSV_REG_DCIF_SET(module)              (isp_devs[module].regs + 0x0058)
 #define CAMSV_REG_FBC_IMGO_CTL1(module)         (isp_devs[module].regs + 0x0A00)
 #define CAMSV_REG_FBC_IMGO_CTL2(module)         (isp_devs[module].regs + 0x0A04)
 #define CAMSV_REG_IMGO_BASE_ADDR(module)        (isp_devs[module].regs + 0x0420)
 #define CAMSV_REG_TG_SEN_MODE(module)           (isp_devs[module].regs + 0x0130)
 #define CAMSV_REG_TG_VF_CON(module)             (isp_devs[module].regs + 0x0134)
-#define CAMSV_REG_TG_PATH_CFG(module)           (isp_devs[module].regs + 0x0140)
 #define CAMSV_REG_TG_INTER_ST(module)           (isp_devs[module].regs + 0x016C)
 #define CAMSV_REG_TG_TIME_STAMP(module)         (isp_devs[module].regs + 0x01A0)
 #define CAMSV_REG_DMA_SOF_RSTSTAT(module)       (isp_devs[module].regs + 0x0400)
