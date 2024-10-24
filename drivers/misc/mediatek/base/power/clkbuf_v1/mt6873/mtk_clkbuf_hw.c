@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 /*
  * @file    mtk_clk_buf_hw.c
@@ -28,41 +28,22 @@
 /* static void __iomem *pwrap_base; */
 static void __iomem *pmif_spi_base;
 static void __iomem *pmif_spmi_base;
-static void __iomem *spm_base_for_clk;
 
 /* #define PWRAP_REG(ofs)		(pwrap_base + ofs) */
 #define PMIF_SPI_REG(ofs)	(pmif_spi_base + ofs)
 #define PMIF_SPMI_REG(ofs)	(pmif_spmi_base + ofs)
-#define SPM_REG(ofs)		(spm_base_for_clk + ofs)
 
 /* PMIF Register*/
 #define PMIFSPI_INF_EN				PMIF_SPI_REG(0x024)
-#define PMIFSPI_OTHER_INF_EN			PMIF_SPI_REG(0x028)
-#define PMIFSPI_DCXO_CMD_ADDR0			PMIF_SPI_REG(0x05C)
-#define PMIFSPI_DCXO_CMD_WDATA0			PMIF_SPI_REG(0x060)
-#define PMIFSPI_DCXO_CMD_ADDR1			PMIF_SPI_REG(0x064)
-#define PMIFSPI_DCXO_CMD_WDATA1			PMIF_SPI_REG(0x068)
-#define PMIFSPI_SLEEP_PROTECTION_CRL		PMIF_SPI_REG(0x3F0)
-#define PMIFSPI_MODE_CRL			PMIF_SPI_REG(0x408)
-#define PMIFSPMI_SLEEP_PROTECTION_CRL		PMIF_SPMI_REG(0x3F0)
-#define PMIFSPMI_MODE_CRL			PMIF_SPMI_REG(0x408)
-#if 0
-#define PMIFSPMI2_SLEEP_PROTECTION_CRL		PMIF_SPMI2_REG(0x3F0)
-#define PMIFSPMI2_MODE_CRL			PMIF_SPMI2_REG(0x408)
-#endif
-
-#define PCM_PWR_IO_EN				SPM_REG(0x2C)
-	#define IO_FORCE_MUX_MASK		1
-	#define IO_FORCE_MUX_SHFT		7
-
-#define SPM_POWER_ON_VAL1			SPM_REG(0x8)
-	#define POWER_ON_FORCE_O1_MASK		1
-	#define POWER_ON_FORCE_O1_SHFT		21
-
-#define SPM_CLK_CON				SPM_REG(0xC)
-	#define CLK_ON_FORCE_O1_MASK		0xFF
-	#define CLK_ON_FORCE_O1_SHFT		24
-
+#define PMIFSPI_OTHER_INF_EN		PMIF_SPI_REG(0x028)
+#define PMIFSPI_DCXO_CMD_ADDR0		PMIF_SPI_REG(0x05C)
+#define PMIFSPI_DCXO_CMD_WDATA0		PMIF_SPI_REG(0x060)
+#define PMIFSPI_DCXO_CMD_ADDR1		PMIF_SPI_REG(0x064)
+#define PMIFSPI_DCXO_CMD_WDATA1		PMIF_SPI_REG(0x068)
+#define PMIFSPI_SLEEP_PROTECTION_CRL	PMIF_SPI_REG(0x3E8)
+#define PMIFSPI_MODE_CRL			PMIF_SPI_REG(0x3E8)
+#define PMIFSPMI_SLEEP_PROTECTION_CRL PMIF_SPMI_REG(0x3E8)
+#define PMIFSPMI_MODE_CRL			PMIF_SPMI_REG(0x3E8)
 /* PMICWRAP Reg */
 /* todo: remove */
 #if 0
@@ -128,17 +109,6 @@ static void __iomem *spm_base_for_clk;
 #define CLKBUF_STATUS_INFO_SIZE 2048
 
 #define PLAT_CLKBUF_OP_FLIGHT_MODE	(0x1)
-
-#if defined(CONFIG_MACH_MT6833)
-#define PWRAP_DTS_NODE_NAME			"mediatek,mt6833-pwrap"
-#define PMIF_M_DTS_NODE_NAME			"mediatek,mt6833-pmif-m"
-#elif defined(CONFIG_MACH_MT6877)
-#define PWRAP_DTS_NODE_NAME			"mediatek,mt6877-pwrap"
-#define PMIF_M_DTS_NODE_NAME			"mediatek,mt6877-pmif-m"
-#else
-#define PWRAP_DTS_NODE_NAME			"mediatek,mt6853-pwrap"
-#define PMIF_M_DTS_NODE_NAME			"mediatek,mt6853-pmif-m"
-#endif /* defined(CONFIG_MACH_MT6833) */
 
 static unsigned int xo2_mode_set[4] = {WCN_EN_M,
 			WCN_EN_BB_G,
@@ -237,13 +207,10 @@ static void pmic_clk_buf_ctrl_ext(short on)
 
 void clkbuf_smc_msg_send(unsigned int flightMode)
 {
-	#if 0
 	struct arm_smccc_res res;
 
-	/* to be removed, should be done by CCCI in atf */
 	arm_smccc_smc(MTK_SIP_CLKBUF_CONTROL, PLAT_CLKBUF_OP_FLIGHT_MODE,
 		flightMode, 0, 0, 0, 0, 0, &res);
-	#endif
 }
 
 void clk_buf_ctrl_bblpm_hw(short on)
@@ -388,13 +355,12 @@ u32 clk_buf_bblpm_enter_cond(void)
 #endif
 #endif
 	}
-
-	if (!bblpm_cond)
-		bblpm_cnt++;
-
 #else /* !CLKBUF_USE_BBLPM */
 	bblpm_cond |= BBLPM_COND_SKIP;
 #endif
+
+	if (!bblpm_cond)
+		bblpm_cnt++;
 
 	return bblpm_cond;
 }
@@ -584,7 +550,6 @@ static void clk_buf_ctrl_internal(enum clk_buf_id id, enum clk_buf_onff onoff)
 
 	mutex_unlock(&clk_buf_ctrl_lock);
 }
-EXPORT_SYMBOL(clk_buf_ctrl_internal);
 
 static void pmic_clk_buf_ctrl(enum CLK_BUF_SWCTRL_STATUS_T *status)
 {
@@ -874,32 +839,6 @@ bool clk_buf_ctrl(enum clk_buf_id id, bool onoff)
 		return true;
 }
 EXPORT_SYMBOL(clk_buf_ctrl);
-
-void clk_buf_disp_ctrl(bool onoff)
-{
-	if (onoff) {
-		pmic_config_interface(PMIC_DCXO_CW00_CLR,
-			      PMIC_XO_EXTBUF3_MODE_MASK,
-			      PMIC_XO_EXTBUF3_MODE_MASK,
-			      PMIC_XO_EXTBUF3_MODE_SHIFT);
-		pmic_config_interface(PMIC_DCXO_CW00_SET,
-			PMIC_XO_EXTBUF3_EN_M_MASK,
-			PMIC_XO_EXTBUF3_EN_M_MASK,
-			PMIC_XO_EXTBUF3_EN_M_SHIFT);
-		pmic_clk_buf_swctrl[XO_NFC] = 1;
-	} else {
-		pmic_config_interface(PMIC_DCXO_CW00_CLR,
-			PMIC_XO_EXTBUF3_MODE_MASK,
-			PMIC_XO_EXTBUF3_MODE_MASK,
-			PMIC_XO_EXTBUF3_MODE_SHIFT);
-		pmic_config_interface(PMIC_DCXO_CW00_CLR,
-			PMIC_XO_EXTBUF3_EN_M_MASK,
-			PMIC_XO_EXTBUF3_EN_M_MASK,
-			PMIC_XO_EXTBUF3_EN_M_SHIFT);
-		pmic_clk_buf_swctrl[XO_NFC] = 0;
-	}
-}
-EXPORT_SYMBOL(clk_buf_disp_ctrl);
 
 void clk_buf_dump_dts_log(void)
 {
@@ -1225,7 +1164,6 @@ u8 clk_buf_get_xo_en_sta(enum xo_id id)
 
 	return xo_en_stat[id];
 }
-EXPORT_SYMBOL(clk_buf_get_xo_en_sta);
 
 void clk_buf_show_status_info(void)
 {
@@ -1314,9 +1252,7 @@ static ssize_t clk_buf_debug_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	u32 onoff;
-	char cmd[32] = {'\0'}, xo_user[11] = {'\0'};
-	unsigned int io_en = 0;
-	unsigned int data = 0;
+	char cmd[32] =  {'\0'}, xo_user[11] = {'\0'};
 
 	if ((sscanf(buf, "%31s %10s %x", cmd, xo_user, &onoff) != 3))
 		return -EPERM;
@@ -1336,45 +1272,6 @@ static ssize_t clk_buf_debug_store(struct kobject *kobj,
 			bblpm_switch = 2;
 		else
 			goto ERROR_CMD;
-	} else if (!strcmp(cmd, "MD_EN")) {
-		io_en = clkbuf_readl(PCM_PWR_IO_EN) &
-			(IO_FORCE_MUX_MASK << IO_FORCE_MUX_SHFT)
-			>> IO_FORCE_MUX_SHFT;
-		pr_info("%s IO_EN: 0x%x", __func__, io_en);
-		pr_info("%s onoff: %d", __func__, io_en);
-		if (io_en) {
-			data = clkbuf_readl(SPM_CLK_CON);
-			pr_info("%s: SPM_CLK_CON: 0x%x\n", __func__, data);
-			if (onoff) {
-				data &= ~(CLK_ON_FORCE_O1_MASK
-					<< CLK_ON_FORCE_O1_SHFT);
-				data |= (CLK_ON_FORCE_O1_MASK
-					<< CLK_ON_FORCE_O1_SHFT);
-			} else {
-				data &= ~(CLK_ON_FORCE_O1_MASK
-					<< CLK_ON_FORCE_O1_SHFT);
-				data &= ~(CLK_ON_FORCE_O1_MASK
-					<< CLK_ON_FORCE_O1_SHFT);
-			}
-			pr_info("%s: SPM_CLK_CON: 0x%x\n", __func__, data);
-			clkbuf_writel(SPM_CLK_CON, data);
-		} else {
-			data = clkbuf_readl(SPM_POWER_ON_VAL1);
-			pr_info("SPM_POWER_ON_VAL1: 0x%x\n", data);
-			if (onoff) {
-				data &= ~(POWER_ON_FORCE_O1_MASK
-					<< POWER_ON_FORCE_O1_SHFT);
-				data |= (POWER_ON_FORCE_O1_MASK
-					<< POWER_ON_FORCE_O1_SHFT);
-			} else {
-				data &= ~(POWER_ON_FORCE_O1_MASK
-					<< POWER_ON_FORCE_O1_SHFT);
-				data &= ~(POWER_ON_FORCE_O1_MASK
-					<< POWER_ON_FORCE_O1_SHFT);
-			}
-			clkbuf_writel(SPM_POWER_ON_VAL1, data);
-			pr_info("SPM_POWER_ON_VAL1: 0x%x\n", data);
-		}
 	} else {
 		if (!strcmp(xo_user, "XO_WCN")) {
 			if (!strcmp(cmd, "CO_BUFFER"))
@@ -1416,6 +1313,7 @@ static ssize_t clk_buf_debug_store(struct kobject *kobj,
 			if (strcmp(xo_user, "0"))
 				goto ERROR_CMD;
 	}
+
 	return count;
 ERROR_CMD:
 	pr_info("bad argument!! please follow correct format\n");
@@ -1437,22 +1335,17 @@ static ssize_t clk_buf_bblpm_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	u32 onoff = 0;
-	char cmd[32] = {'\0'};
 	int ret = 0;
 
-	if ((sscanf(buf, "%31s %x", cmd, &onoff) != 2))
-		return -EPERM;
-
-	pr_info("cmd = %s, bblpm input = %d\n", cmd, onoff);
-	if (!strcmp(cmd, "BBLPM_FORCE")) {
-		if (onoff == 1)
-			ret = clk_buf_ctrl_bblpm_sw(true);
-		else if (onoff == 0)
-			ret = clk_buf_ctrl_bblpm_sw(false);
-	} else {
-		pr_info("bad argument!! please follow correct format\n");
+	if ((kstrtouint(buf, 10, &onoff))) {
+		pr_info("bblpm input error\n");
 		return -EPERM;
 	}
+	pr_info("bblpm input = %d\n", onoff);
+	if (onoff == 1)
+		ret = clk_buf_ctrl_bblpm_sw(true);
+	else if (onoff == 0)
+		ret = clk_buf_ctrl_bblpm_sw(false);
 
 	if (ret)
 		return ret;
@@ -1482,162 +1375,15 @@ static ssize_t clk_buf_bblpm_show(struct kobject *kobj,
 	return len;
 }
 
-static void pre_capid_trim_write(void)
-{
-	pmic_config_interface(PMIC_XO_COFST_FPM_ADDR, 0x0,
-		PMIC_XO_COFST_FPM_MASK,
-		PMIC_XO_COFST_FPM_SHIFT);
-	pmic_config_interface(PMIC_XO_AAC_FPM_SWEN_ADDR, 0x0,
-		PMIC_XO_AAC_FPM_SWEN_MASK,
-		PMIC_XO_AAC_FPM_SWEN_SHIFT);
-	mdelay(1);
-	pmic_config_interface(PMIC_XO_AAC_FPM_SWEN_ADDR, 0x1,
-		PMIC_XO_AAC_FPM_SWEN_MASK,
-		PMIC_XO_AAC_FPM_SWEN_SHIFT);
-	mdelay(30);
-}
-
-static void capid_trim_write(uint32_t cap_code)
-{
-	pmic_config_interface(PMIC_XO_CDAC_FPM_ADDR, cap_code,
-		PMIC_XO_CDAC_FPM_MASK,
-		PMIC_XO_CDAC_FPM_SHIFT);
-}
-
-static uint32_t capid_trim_read(void)
-{
-	uint32_t cap_code = 0;
-
-	pmic_read_interface(PMIC_XO_CDAC_FPM_ADDR, &cap_code,
-			    PMIC_XO_CDAC_FPM_MASK, PMIC_XO_CDAC_FPM_SHIFT);
-
-	return cap_code;
-}
-
-static ssize_t clk_buf_capid_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	uint32_t capid;
-	int ret;
-	const char *capid_buf;
-
-	if (buf != NULL && count != 0) {
-		if (!strncmp(buf, "cmd1#", 5)) {
-			pre_capid_trim_write();
-		} else if (!strncmp(buf, "cmd2#", 5)) {
-			capid_buf = &buf[5];
-			ret = kstrtouint(capid_buf, 0, &capid);
-			if (ret) {
-				pr_info("wrong format!\n");
-				return ret;
-			}
-
-			if (capid > 0xFF) {
-				pr_info("offset should be within(%x) %x!\n",
-					0xFF, capid);
-				return -EINVAL;
-			}
-
-			pr_info("original cap code: 0x%x\n", capid_trim_read());
-
-			capid_trim_write(capid);
-			mdelay(1);
-			pr_info("write capid 0x%x done. current capid: 0x%x\n",
-				capid, capid_trim_read());
-		} else {
-			ret = kstrtouint(buf, 0, &capid);
-			if (ret) {
-				pr_info("wrong format!\n");
-				return ret;
-			}
-
-			if (capid > 0xFF) {
-				pr_info("offset should be within(%x) %x!\n",
-					0xFF, capid);
-				return -EINVAL;
-			}
-
-			pr_info("original cap code: 0x%x\n", capid_trim_read());
-
-			pre_capid_trim_write();
-			capid_trim_write(capid);
-			mdelay(1);
-
-			pr_info("write capid 0x%x done. current capid: 0x%x\n",
-				capid, capid_trim_read());
-		}
-	} else {
-		pr_info("invalid parameter!\n");
-		return -EINVAL;
-	}
-
-	return count;
-}
-
-static ssize_t clk_buf_capid_show(struct kobject *kobj,
-struct kobj_attribute *attr, char *buf)
-{
-	int len = 0;
-
-	len += snprintf(buf+len, PAGE_SIZE-len, "dcxo capid: 0x%x\n",
-		capid_trim_read());
-
-	return len;
-}
-
-static ssize_t clk_buf_heater_store(struct kobject *kobj,
-			struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	bool on;
-	const char *heater_buf;
-	int ret = 0;
-
-	heater_buf = &buf[0];
-	ret = kstrtobool(heater_buf, &on);
-	if (ret) {
-		pr_info("wrong format!\n");
-		return ret;
-	}
-
-	if (on)
-		pmic_config_interface(PMIC_RG_XO_HEATER_SEL_ADDR, 0x2,
-			PMIC_RG_XO_HEATER_SEL_MASK,
-			PMIC_RG_XO_HEATER_SEL_SHIFT);
-	else
-		pmic_config_interface(PMIC_RG_XO_HEATER_SEL_ADDR, 0x0,
-			PMIC_RG_XO_HEATER_SEL_MASK,
-			PMIC_RG_XO_HEATER_SEL_SHIFT);
-	return count;
-}
-
-static ssize_t clk_buf_heater_show(struct kobject *kobj,
-		struct kobj_attribute *attr, char *buf)
-{
-	int len = 0;
-	uint32_t heater = 0;
-
-	pmic_read_interface(PMIC_RG_XO_HEATER_SEL_ADDR, &heater,
-		PMIC_RG_XO_HEATER_SEL_MASK,
-		PMIC_RG_XO_HEATER_SEL_SHIFT);
-	len += snprintf(buf+len, PAGE_SIZE-len, "dcxo heater: 0x%x\n",
-					heater);
-
-	return len;
-}
-
 DEFINE_ATTR_RW(clk_buf_ctrl);
 DEFINE_ATTR_RW(clk_buf_debug);
 DEFINE_ATTR_RW(clk_buf_bblpm);
-DEFINE_ATTR_RW(clk_buf_capid);
-DEFINE_ATTR_RW(clk_buf_heater);
 
 static struct attribute *clk_buf_attrs[] = {
 	/* for clock buffer control */
 	__ATTR_OF(clk_buf_ctrl),
 	__ATTR_OF(clk_buf_debug),
 	__ATTR_OF(clk_buf_bblpm),
-	__ATTR_OF(clk_buf_capid),
-	__ATTR_OF(clk_buf_heater),
 
 	/* must */
 	NULL,
@@ -1716,7 +1462,7 @@ int clk_buf_dts_map(void)
 		return -1;
 	}
 
-	node = of_find_compatible_node(NULL, NULL, PWRAP_DTS_NODE_NAME);
+	node = of_find_compatible_node(NULL, NULL, "mediatek,mt6873-pwrap");
 	if (node)
 		pmif_spi_base = of_iomap(node, 0);
 	else {
@@ -1725,20 +1471,11 @@ int clk_buf_dts_map(void)
 		return -1;
 	}
 
-	node = of_find_compatible_node(NULL, NULL, PMIF_M_DTS_NODE_NAME);
+	node = of_find_compatible_node(NULL, NULL, "mediatek,spmi_mpu");
 	if (node)
 		pmif_spmi_base = of_iomap(node, 0);
 	else {
 		pr_notice("%s can't find compatible node for pmif_spmi\n",
-			__func__);
-		return -1;
-	}
-
-	node = of_find_compatible_node(NULL, NULL, "mediatek,sleep");
-	if (node)
-		spm_base_for_clk = of_iomap(node, 0);
-	else {
-		pr_notice("%s can't findcompatible node for spm_base_for_clk\n",
 			__func__);
 		return -1;
 	}
@@ -1877,13 +1614,11 @@ void clk_buf_post_init(void)
 #endif
 #endif
 
-//XO_NFC as 6382 26M CLK, so can't disable clk for 6382 project
-/*#ifndef CONFIG_MTK_NFC_CLKBUF_ENABLE
+#ifndef CONFIG_MTK_NFC_CLKBUF_ENABLE
+	/* no need to use XO_NFC if no NFC */
 	clk_buf_ctrl_internal(CLK_BUF_NFC, CLK_BUF_FORCE_OFF);
 	CLK_BUF3_STATUS = CLOCK_BUFFER_DISABLE;
 #endif
-*/
-
 #ifdef CLKBUF_USE_BBLPM
 	if (bblpm_switch == 2) {
 		clk_buf_ctrl_bblpm_mask(CLK_BUF_BB_MD, true);
